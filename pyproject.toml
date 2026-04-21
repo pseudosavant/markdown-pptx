@@ -30,6 +30,12 @@ dependencies = [
   "python-pptx>=1.0.2",
 ]
 
+[project.urls]
+Homepage = "https://github.com/pseudosavant/md-to-pptx"
+Repository = "https://github.com/pseudosavant/md-to-pptx"
+Issues = "https://github.com/pseudosavant/md-to-pptx/issues"
+Releases = "https://github.com/pseudosavant/md-to-pptx/releases"
+
 [project.scripts]
 md-to-pptx = "markdown_slides.cli:main"
 
