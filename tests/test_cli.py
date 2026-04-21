@@ -78,6 +78,62 @@ def test_syntax_json_output() -> None:
     assert payload["ok"] is True
     assert "document_front_matter_keys" in payload
     assert "slide_front_matter_keys" in payload
+    assert payload["aspect_ratio_values"] == ["16:9", "4:3"]
+    assert payload["layout_values"] == ["Title Slide", "Title and Content", "Section Header", "Title Only", "Blank"]
+    assert payload["theme_color_syntax"] == (
+        "Use var(--slot-name) in text colors and backgrounds, for example var(--accent-1) or var(--dark-1)."
+    )
+    assert payload["color_scheme_syntax"]["preset_example"] == {"preset": "Office"}
+    assert payload["color_scheme_syntax"]["custom_keys"] == [
+        "dark_1",
+        "light_1",
+        "dark_2",
+        "light_2",
+        "accent_1",
+        "accent_2",
+        "accent_3",
+        "accent_4",
+        "accent_5",
+        "accent_6",
+        "hyperlink",
+        "followed_hyperlink",
+    ]
+    assert payload["theme_color_variables"] == [
+        "var(--dark-1)",
+        "var(--light-1)",
+        "var(--dark-2)",
+        "var(--light-2)",
+        "var(--accent-1)",
+        "var(--accent-2)",
+        "var(--accent-3)",
+        "var(--accent-4)",
+        "var(--accent-5)",
+        "var(--accent-6)",
+        "var(--hyperlink)",
+        "var(--followed-hyperlink)",
+    ]
+    assert stderr.getvalue() == ""
+
+
+def test_syntax_plain_output_lists_all_theme_color_variables() -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main(["--syntax"], stdout=stdout, stderr=stderr)
+
+    output = stdout.getvalue()
+    assert exit_code == 0
+    assert "aspect_ratio values: 16:9, 4:3" in output
+    assert "layout values: Title Slide, Title and Content, Section Header, Title Only, Blank" in output
+    assert "Theme color syntax:" in output
+    assert "Theme color variables:" in output
+    assert 'color_scheme preset example: {"preset": "Office"}' in output
+    assert "color_scheme custom keys: dark_1, light_1, dark_2, light_2, accent_1, accent_2, accent_3, accent_4, accent_5, accent_6, hyperlink, followed_hyperlink" in output
+    assert "var(--dark-1)" in output
+    assert "var(--light-2)" in output
+    assert "var(--accent-6)" in output
+    assert "var(--hyperlink)" in output
+    assert "var(--followed-hyperlink)" in output
     assert stderr.getvalue() == ""
 
 

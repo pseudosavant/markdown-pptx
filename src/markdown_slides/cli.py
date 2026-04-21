@@ -176,6 +176,7 @@ def _write_error(exc: MarkdownSlidesError, *, json_mode: bool, stdout, stderr) -
 
 
 def _format_syntax(payload: dict[str, object]) -> str:
+    color_scheme = payload["color_scheme_syntax"]
     lines = [
         "Document structure:",
         "  - Optional document front matter is allowed only at the top of the file.",
@@ -184,9 +185,15 @@ def _format_syntax(payload: dict[str, object]) -> str:
         "  - Everything after the H1/front matter until the next H1 is the slide body.",
         "",
         f"Document front matter keys: {', '.join(payload['document_front_matter_keys'])}",
+        f"aspect_ratio values: {', '.join(payload['aspect_ratio_values'])}",
         f"Slide front matter keys: {', '.join(payload['slide_front_matter_keys'])}",
+        f"layout values: {', '.join(payload['layout_values'])}",
         f"Supported markdown: {', '.join(payload['supported_markdown'])}",
         f"Unsupported markdown: {', '.join(payload['unsupported_markdown'])}",
+        f"Theme color syntax: {payload['theme_color_syntax']}",
+        f"Theme color variables: {', '.join(payload['theme_color_variables'])}",
+        f"color_scheme preset example: {json.dumps(color_scheme['preset_example'])}",
+        f"color_scheme custom keys: {', '.join(color_scheme['custom_keys'])}",
         "",
         "Example:",
         str(payload["example"]),
