@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "md-to-pptx"
+name = "markdown-pptx"
 version = "1.0.1"
 description = "Convert constrained Markdown slide decks into editable PowerPoint presentations."
 readme = "README.md"
@@ -31,13 +31,13 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/pseudosavant/md-to-pptx"
-Repository = "https://github.com/pseudosavant/md-to-pptx"
-Issues = "https://github.com/pseudosavant/md-to-pptx/issues"
-Releases = "https://github.com/pseudosavant/md-to-pptx/releases"
+Homepage = "https://github.com/pseudosavant/markdown-pptx"
+Repository = "https://github.com/pseudosavant/markdown-pptx"
+Issues = "https://github.com/pseudosavant/markdown-pptx/issues"
+Releases = "https://github.com/pseudosavant/markdown-pptx/releases"
 
 [project.scripts]
-md-to-pptx = "markdown_slides.cli:main"
+markdown-pptx = "markdown_slides.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/markdown_slides"]

@@ -17,7 +17,7 @@ def test_no_args_prints_help() -> None:
     exit_code = main([], stdout=stdout, stderr=stderr)
 
     assert exit_code == 0
-    assert "md-to-pptx deck.md" in stdout.getvalue()
+    assert "markdown-pptx deck.md" in stdout.getvalue()
     assert stderr.getvalue() == ""
 
 
@@ -29,7 +29,7 @@ def test_version_flag_prints_version() -> None:
         main(["--version"], stdout=stdout, stderr=stderr)
 
     assert excinfo.value.code == 0
-    assert stdout.getvalue() == f"md-to-pptx {__version__}\n"
+    assert stdout.getvalue() == f"markdown-pptx {__version__}\n"
     assert stderr.getvalue() == ""
 
 
@@ -38,7 +38,7 @@ def test_help_mentions_agent_friendly_modes() -> None:
     assert "--list-layouts" in help_text
     assert "--list-color-schemes" in help_text
     assert "--syntax" in help_text
-    assert "md-to-pptx deck.md" in help_text
+    assert "markdown-pptx deck.md" in help_text
 
 
 def test_list_color_schemes_plain_output() -> None:

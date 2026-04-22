@@ -15,19 +15,19 @@ from markdown_slides.renderer import list_layouts, render_pptx
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="md-to-pptx",
+        prog="markdown-pptx",
         description="Render constrained Markdown slide decks to editable PPTX.",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=(
             "Happy path:\n"
-            "  md-to-pptx deck.md\n"
-            "  md-to-pptx deck.md out.pptx\n"
-            "  md-to-pptx --input deck.md --template theme.pptx\n"
+            "  markdown-pptx deck.md\n"
+            "  markdown-pptx deck.md out.pptx\n"
+            "  markdown-pptx --input deck.md --template theme.pptx\n"
             "\n"
             "Inspection:\n"
-            "  md-to-pptx --syntax\n"
-            "  md-to-pptx --list-color-schemes\n"
-            "  md-to-pptx --list-layouts [--template theme.pptx]\n"
+            "  markdown-pptx --syntax\n"
+            "  markdown-pptx --list-color-schemes\n"
+            "  markdown-pptx --list-layouts [--template theme.pptx]\n"
         ),
     )
     parser.add_argument("input", nargs="?", help="Input markdown path, or '-' for stdin.")
@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--list-layouts", action="store_true", help="List available template layouts.")
     parser.add_argument("--list-color-schemes", action="store_true", help="List baked-in Office color schemes.")
     parser.add_argument("--syntax", action="store_true", help="Print the supported markdown/front-matter syntax.")
-    parser.add_argument("--version", action="version", version=f"md-to-pptx {__version__}")
+    parser.add_argument("--version", action="version", version=f"markdown-pptx {__version__}")
     return parser
 
 
@@ -50,7 +50,7 @@ def main(argv: Sequence[str] | None = None, *, stdout=None, stderr=None) -> int:
     stderr = stderr or sys.stderr
     args_list = list(sys.argv[1:] if argv is None else argv)
     if "--version" in args_list:
-        stdout.write(f"md-to-pptx {__version__}\n")
+        stdout.write(f"markdown-pptx {__version__}\n")
         raise SystemExit(0)
     parser = build_parser()
     if not args_list:
