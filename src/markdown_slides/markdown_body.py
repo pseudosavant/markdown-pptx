@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
-from markdown_slides.errors import ParseError
+from markdown_slides.errors import ParseError, UnsupportedContentError
 from markdown_slides.models import BodyContent, ImageBlock, InlineText, Paragraph, TableBlock
 
 MD = MarkdownIt("commonmark").enable("table")
+TASK_ITEM_RE = re.compile(r"^\[[ xX]\](?:\s+|$)")
+FOOTNOTE_RE = re.compile(r"\[\^[^\]\r\n]+\](?::)?")
 
 
 @dataclass(slots=True)
@@ -21,10 +24,41 @@ def parse_body_markdown(text: str, *, source_name: str, slide_index: int, base_l
     if not text.strip():
         return BodyContent()
     tokens = MD.parse(text)
+    _validate_supported_tokens(
+        tokens,
+        source_name=source_name,
+        slide_index=slide_index,
+        base_line=base_line,
+    )
     cursor = _Cursor(tokens=tokens)
     content = BodyContent()
     _parse_block_sequence(cursor, content, source_name=source_name, slide_index=slide_index, base_line=base_line)
     return content
+
+
+def _validate_supported_tokens(
+    tokens: list[Token],
+    *,
+    source_name: str,
+    slide_index: int,
+    base_line: int,
+) -> None:
+    for token in tokens:
+        if token.type in {"html_block", "html_inline"}:
+            raise _unsupported_token_error(token, "Raw HTML is not supported.", source_name, slide_index, base_line)
+        for child in token.children or []:
+            if child.type == "html_inline":
+                raise _unsupported_token_error(token, "Raw HTML is not supported.", source_name, slide_index, base_line)
+            if child.type != "text":
+                continue
+            if TASK_ITEM_RE.match(child.content):
+                raise _unsupported_token_error(
+                    token, "Task lists are not supported.", source_name, slide_index, base_line
+                )
+            if FOOTNOTE_RE.search(child.content):
+                raise _unsupported_token_error(
+                    token, "Footnotes are not supported.", source_name, slide_index, base_line
+                )
 
 
 def _parse_block_sequence(
@@ -53,15 +87,23 @@ def _parse_block_sequence(
             _parse_fence(token, content)
             cursor.index += 1
         elif token.type == "code_block":
-            raise _token_error(token, "Indented code blocks are not supported.", source_name, slide_index, base_line)
+            raise _unsupported_token_error(
+                token, "Indented code blocks are not supported.", source_name, slide_index, base_line
+            )
         elif token.type == "table_open":
-            content.tables.append(_parse_table(cursor, source_name=source_name, slide_index=slide_index, base_line=base_line))
+            content.tables.append(
+                _parse_table(cursor, source_name=source_name, slide_index=slide_index, base_line=base_line)
+            )
         elif token.type in {"html_block", "html_inline"}:
-            raise _token_error(token, "Raw HTML is not supported.", source_name, slide_index, base_line)
+            raise _unsupported_token_error(token, "Raw HTML is not supported.", source_name, slide_index, base_line)
         elif token.type == "hr":
-            raise _token_error(token, "Horizontal rules are not supported.", source_name, slide_index, base_line)
+            raise _unsupported_token_error(
+                token, "Horizontal rules are not supported.", source_name, slide_index, base_line
+            )
         else:
-            raise _token_error(token, f"Unsupported markdown block '{token.type}'.", source_name, slide_index, base_line)
+            raise _unsupported_token_error(
+                token, f"Unsupported markdown block '{token.type}'.", source_name, slide_index, base_line
+            )
     if end_type:
         raise ParseError(
             "invalid_markdown",
@@ -71,28 +113,36 @@ def _parse_block_sequence(
         )
 
 
-def _parse_heading(cursor: _Cursor, content: BodyContent, *, source_name: str, slide_index: int, base_line: int) -> None:
+def _parse_heading(
+    cursor: _Cursor, content: BodyContent, *, source_name: str, slide_index: int, base_line: int
+) -> None:
     open_token = cursor.tokens[cursor.index]
     level = int(open_token.tag[1])
     inline = cursor.tokens[cursor.index + 1]
     if level == 1:
-        raise _token_error(open_token, "H1 headings are only allowed as slide boundaries.", source_name, slide_index, base_line)
+        raise _unsupported_token_error(
+            open_token, "H1 headings are only allowed as slide boundaries.", source_name, slide_index, base_line
+        )
     content.paragraphs.append(
         Paragraph(kind="heading", fragments=_parse_inline(inline.children or []), heading_level=level)
     )
     cursor.index += 3
 
 
-def _parse_paragraph(cursor: _Cursor, content: BodyContent, *, source_name: str, slide_index: int, base_line: int) -> None:
+def _parse_paragraph(
+    cursor: _Cursor, content: BodyContent, *, source_name: str, slide_index: int, base_line: int
+) -> None:
     inline = cursor.tokens[cursor.index + 1]
-    non_space_children = [child for child in (inline.children or []) if not (child.type == "text" and child.content.strip() == "")]
+    non_space_children = [
+        child for child in (inline.children or []) if not (child.type == "text" and child.content.strip() == "")
+    ]
     if len(non_space_children) == 1 and non_space_children[0].type == "image":
         image = non_space_children[0]
         content.images.append(ImageBlock(src=image.attrGet("src") or "", alt=image.content or ""))
         cursor.index += 3
         return
     if any(child.type == "image" for child in non_space_children):
-        raise _token_error(
+        raise _unsupported_token_error(
             inline,
             "Images must appear as a standalone paragraph.",
             source_name,
@@ -113,7 +163,13 @@ def _parse_list(
     level: int,
 ) -> None:
     if level >= 3:
-        raise _token_error(cursor.tokens[cursor.index], "Nested lists deeper than 3 levels are not supported.", source_name, slide_index, base_line)
+        raise _unsupported_token_error(
+            cursor.tokens[cursor.index],
+            "Nested lists deeper than 3 levels are not supported.",
+            source_name,
+            slide_index,
+            base_line,
+        )
     open_token = cursor.tokens[cursor.index]
     ordered = open_token.type == "ordered_list_open"
     next_number = int(open_token.attrGet("start") or "1")
@@ -125,7 +181,9 @@ def _parse_list(
             cursor.index += 1
             return
         if token.type != "list_item_open":
-            raise _token_error(token, f"Unexpected token '{token.type}' inside list.", source_name, slide_index, base_line)
+            raise _token_error(
+                token, f"Unexpected token '{token.type}' inside list.", source_name, slide_index, base_line
+            )
         cursor.index += 1
         while cursor.tokens[cursor.index].type != "list_item_close":
             item_token = cursor.tokens[cursor.index]
@@ -150,13 +208,21 @@ def _parse_list(
                     level=level + 1,
                 )
             else:
-                raise _token_error(item_token, "Only paragraphs and nested lists are supported inside list items.", source_name, slide_index, base_line)
+                raise _token_error(
+                    item_token,
+                    "Only paragraphs and nested lists are supported inside list items.",
+                    source_name,
+                    slide_index,
+                    base_line,
+                )
         cursor.index += 1
         next_number += 1
     raise _token_error(open_token, "List is not closed.", source_name, slide_index, base_line)
 
 
-def _parse_blockquote(cursor: _Cursor, content: BodyContent, *, source_name: str, slide_index: int, base_line: int) -> None:
+def _parse_blockquote(
+    cursor: _Cursor, content: BodyContent, *, source_name: str, slide_index: int, base_line: int
+) -> None:
     cursor.index += 1
     nested = BodyContent()
     _parse_block_sequence(
@@ -168,8 +234,7 @@ def _parse_blockquote(cursor: _Cursor, content: BodyContent, *, source_name: str
         end_type="blockquote_close",
     )
     if nested.images or nested.tables:
-        raise ParseError(
-            "unsupported_content",
+        raise UnsupportedContentError(
             "Blockquotes only support text-flow content.",
             slide_index=slide_index,
             input_path=source_name,
@@ -283,3 +348,10 @@ def _parse_inline_with_index(tokens: list[Token], index: int, end_types: set[str
 def _token_error(token: Token, message: str, source_name: str, slide_index: int, base_line: int) -> ParseError:
     line = base_line + token.map[0] if token.map else None
     return ParseError("invalid_markdown", message, line=line, slide_index=slide_index, input_path=source_name)
+
+
+def _unsupported_token_error(
+    token: Token, message: str, source_name: str, slide_index: int, base_line: int
+) -> UnsupportedContentError:
+    line = base_line + token.map[0] if token.map else None
+    return UnsupportedContentError(message, line=line, slide_index=slide_index, input_path=source_name)

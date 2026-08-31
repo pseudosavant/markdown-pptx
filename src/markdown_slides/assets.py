@@ -6,7 +6,6 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
-
 PACKAGE_ASSETS = files("markdown_slides").joinpath("assets")
 
 

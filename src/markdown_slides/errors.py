@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 EXIT_OK = 0
 EXIT_USAGE = 2
 EXIT_PARSE = 3
@@ -48,6 +47,11 @@ class MarkdownSlidesError(Exception):
 class UsageError(MarkdownSlidesError):
     def __init__(self, message: str) -> None:
         super().__init__("usage_error", message, exit_code=EXIT_USAGE)
+
+
+class InputError(MarkdownSlidesError):
+    def __init__(self, code: str, message: str, *, input_path: str | None = None) -> None:
+        super().__init__(code, message, exit_code=EXIT_USAGE, input_path=input_path)
 
 
 class ParseError(MarkdownSlidesError):

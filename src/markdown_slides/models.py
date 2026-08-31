@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
 CANONICAL_LAYOUTS = {
     "title-slide": "Title Slide",
     "titleandcontent": "Title and Content",
@@ -29,7 +28,7 @@ class InlineText:
     kind: str
     text: str | None = None
     href: str | None = None
-    children: list["InlineText"] = field(default_factory=list)
+    children: list[InlineText] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -51,6 +50,16 @@ class ImageBlock:
 class TableBlock:
     headers: list[list[InlineText]]
     rows: list[list[list[InlineText]]]
+
+
+@dataclass(slots=True)
+class TableOptions:
+    header_row: bool = True
+    total_row: bool = False
+    first_column: bool = False
+    last_column: bool = False
+    banded_rows: bool = True
+    banded_columns: bool = False
 
 
 @dataclass(slots=True)
@@ -111,10 +120,12 @@ class Slide:
     index: int
     title: str
     layout: str | None
+    master: int | str | None
     background: Background | None
     text_colors: TextColors | None
     hide_background_graphics: bool
     notes: str | None
+    table_options: TableOptions
     body_markdown: str
     body: BodyContent
     line_number: int

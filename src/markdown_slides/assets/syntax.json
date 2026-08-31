@@ -1,6 +1,18 @@
 {
   "document_front_matter_keys": ["aspect_ratio", "fonts", "color_scheme", "background", "title_color", "body_color"],
-  "slide_front_matter_keys": ["layout", "background", "title_color", "body_color", "hide_background_graphics", "notes"],
+  "slide_front_matter_keys": ["master", "layout", "background", "title_color", "body_color", "hide_background_graphics", "notes", "table"],
+  "master_selector_syntax": "Use a positive 1-based master index, or an exact unique slide-master/theme name reported by --list-masters.",
+  "table_options": {
+    "scope": "Slide-level options that require exactly one pipe table in the slide body.",
+    "defaults": {
+      "header_row": true,
+      "total_row": false,
+      "first_column": false,
+      "last_column": false,
+      "banded_rows": true,
+      "banded_columns": false
+    }
+  },
   "aspect_ratio_values": ["16:9", "4:3"],
   "layout_values": ["Title Slide", "Title and Content", "Section Header", "Title Only", "Blank"],
   "theme_color_syntax": "Use var(--slot-name) in text colors and backgrounds, for example var(--accent-1) or var(--dark-1).",
@@ -42,6 +54,7 @@
   "unsupported_markdown": [
     "setext_headings",
     "indented_code_blocks",
+    "horizontal_rules",
     "raw_html",
     "task_lists",
     "footnotes",
@@ -63,5 +76,5 @@
     "var(--hyperlink)",
     "var(--followed-hyperlink)"
   ],
-  "example": "---\naspect_ratio: \"16:9\"\nfonts:\n  body: Aptos\n  headings: Aptos Display\ncolor_scheme:\n  preset: Office\ntitle_color: \"var(--dark-1)\"\nbody_color: \"var(--dark-1)\"\nbackground: \"linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)\"\n---\n\n# Title slide\n---\nlayout: Title Slide\nnotes: |\n  Introduce the deck.\n---\n\nA concise subtitle line.\n\n# Overview\n---\nlayout: Title and Content\ntitle_color: \"var(--light-1)\"\nbody_color: \"var(--light-1)\"\nbackground: \"linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)\"\n---\n\n## Goals\n- Keep the markdown readable\n- Use real PowerPoint placeholders\n- Fail on ambiguous mappings\n"
+  "example": "---\naspect_ratio: \"16:9\"\nfonts:\n  body: Aptos\n  headings: Aptos Display\ncolor_scheme:\n  preset: Office\ntitle_color: \"var(--dark-1)\"\nbody_color: \"var(--dark-1)\"\nbackground: \"linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)\"\n---\n\n# Title slide\n---\nmaster: 1\nlayout: Title Slide\nnotes: |\n  Introduce the deck.\n---\n\nA concise subtitle line.\n\n# Overview\n---\nlayout: Title and Content\ntitle_color: \"var(--light-1)\"\nbody_color: \"var(--light-1)\"\nbackground: \"linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)\"\n---\n\n## Goals\n- Keep the markdown readable\n- Use real PowerPoint placeholders\n- Fail on ambiguous mappings\n"
 }

@@ -43,21 +43,48 @@ Each `# H1` starts a new slide, optional slide front matter appears immediately 
 
 # Basic CLI usage
 
-Run `markdown-pptx deck.md` to write `deck.pptx` next to the source markdown file.
+Run `uvx markdown-pptx deck.md` to write `deck.pptx` next to the source markdown file.
 
-Use `markdown-pptx deck.md out.pptx` to choose the output path, `--template theme.pptx` to render against an existing PowerPoint template, and `--force` to overwrite an existing file.
+Use `uvx markdown-pptx deck.md out.pptx` to choose the output path, `--template theme.pptx` to render against an existing PowerPoint template, and `--force` to overwrite an existing file.
+
+Run `uvx markdown-pptx` with no arguments for the quick reference or use `--about` for project metadata.
 
 # Inspection-friendly CLI modes
 
-Use `--syntax` to print the supported deck format, `--list-layouts` to inspect the layouts available in a template, and `--list-color-schemes` to see the built-in theme presets.
+Use `--syntax` to print the supported deck format, `--list-masters` to inspect a template's slide masters, `--list-layouts` to inspect layouts on a selected master, and `--list-color-schemes` to see the built-in theme presets.
 
-These modes are especially useful when a person or coding agent needs to discover the valid inputs before generating a deck.
+Add `--json` for structured results. Master and layout inspection report names, indices, placeholder inventory, and compatibility so people and coding agents can discover valid inputs before generating a deck.
+
+# Master and layout selection
+---
+master: "Showcase Alternate"
+layout: Title and Content
+---
+
+This slide uses the template's `Showcase Alternate` master while the rest of the deck defaults to master 1. Templates keep every embedded master in the output.
+
+Master selection uses slide metadata first, then the CLI default, then master 1. Layout names are resolved within the selected master.
+
+# Agent skill support
+
+Run `uvx markdown-pptx skill install` to install the managed agent skill under `~/.agents/skills`, or `uvx markdown-pptx skill remove` to remove it safely.
+
+The skill teaches agents to inspect syntax, masters, and layouts; prefer structured output; respect overwrite safety; and handle local or remote images predictably.
 
 # Color and template control
 
 Markdown can set document-level and slide-level colors with `color_scheme`, `title_color`, `body_color`, and background values such as solid colors, gradients, and images.
 
 When a template already has the colors you want, `--ignore-document-colors` and `--ignore-slide-colors` let the template remain the source of truth for those color settings.
+
+# Supported color formats
+---
+title_color: "hsl(204, 71%, 39%)"
+body_color: "rgb(16, 38, 63)"
+background: "#DEF"
+---
+
+Colors accept short or long hex, RGB, HSL, and PowerPoint theme references such as `var(--accent-1)`.
 
 # Feature examples
 ---
@@ -81,8 +108,12 @@ layout: Section Header
 This slide uses the Section Header layout.
 
 # Title and Content layout
+---
+master: 1
+layout: Title and Content
+---
 
-This slide uses the default Title and Content layout.
+This slide explicitly uses master 1 and its Title and Content layout.
 
 # Title Only layout
 ---
@@ -93,16 +124,21 @@ layout: Title Only
 
 `markdown-pptx` can include links in normal body text, such as the [project repository](https://github.com/pseudosavant/markdown-pptx) and the [python-pptx documentation](https://python-pptx.readthedocs.io/en/latest/).
 
-# H2 through H4 headings
+# Inline text styling
+
+Normal text can mix **strong emphasis**, *italic emphasis*, `inline code`, and [hyperlinks](https://github.com/pseudosavant/markdown-pptx) in the same editable placeholder.
+
+# H2 through H6 headings
 
 ## H2 heading
-H2 stays inside the current slide body.
 
 ### H3 heading
-H3 also stays inside the same slide body.
 
 #### H4 heading
-H4 is rendered smaller while still using heading styling.
+
+##### H5 heading
+
+###### H6 heading
 
 # Bulleted list
 
@@ -110,11 +146,39 @@ H4 is rendered smaller while still using heading styling.
 - Choose a template if needed
 - Render an editable PowerPoint file
 
+# Nested lists
+
+- Inspect the template
+  - Select a master
+    - Choose a compatible layout
+- Write the Markdown
+  - Keep each slide focused
+- Render and review the PowerPoint
+
 # Numbered list
 
 1. Write the markdown source
 2. Run the CLI
 3. Open the generated `.pptx`
+
+# Pipe table
+---
+table:
+  header_row: true
+  total_row: true
+  first_column: true
+  last_column: true
+  banded_rows: true
+  banded_columns: true
+---
+
+| Markdown input | PowerPoint result |
+| --- | --- |
+| `# H1` | New slide |
+| `layout` | Real slide layout |
+| `master` | Master-specific layout group |
+| `notes` | Editable speaker notes |
+| Total | All six native table-style flags |
 
 # Blockquote
 
@@ -123,7 +187,7 @@ H4 is rendered smaller while still using heading styling.
 # Code block
 
 ```powershell
-markdown-pptx sample/showcase.md sample/showcase.pptx --force
+uvx markdown-pptx sample/showcase.md sample/showcase.pptx --template sample/showcase-template.pptx --force
 ```
 
 # Local image
@@ -131,6 +195,12 @@ markdown-pptx sample/showcase.md sample/showcase.pptx --force
 ![Local markdown-pptx sample image](./showcase-local.png)
 
 # Remote image
+---
+notes: |
+  This slide demonstrates downloading a remote image during rendering.
+  [Sources]
+  - https://raw.githubusercontent.com/github/explore/main/topics/python/python.png (Python logo)
+---
 
 ![Remote Python logo](https://raw.githubusercontent.com/github/explore/main/topics/python/python.png)
 
@@ -141,19 +211,29 @@ background: "#EAF3FF"
 
 This slide uses a solid slide background color.
 
-# Background image
+# Transparent background and hidden master graphics
 ---
-background: "url('./showcase-local.png')"
+master: 2
+layout: Title and Content
+background: none
+hide_background_graphics: true
 ---
 
-This slide uses a slide background image.
+This slide removes its slide-level fill and hides the orange accent graphic inherited from the alternate master.
+
+#
+---
+layout: Blank
+background: "url('./showcase-local.png')"
+notes: This slide demonstrates a full-slide background image on the Blank layout.
+---
 
 # Linear gradient background
 ---
-background: "linear-gradient(90deg, var(--accent-2) 0%, var(--accent-4) 100%)"
+background: "linear-gradient(90deg, var(--accent-2) 0%, var(--accent-3) 48%, var(--accent-4) 100%)"
 ---
 
-This slide uses a linear gradient background.
+This slide uses a three-stop linear gradient background.
 
 # Radial gradient background
 ---
@@ -171,9 +251,16 @@ background: "linear-gradient(90deg, var(--accent-1) 0%, var(--accent-4) 100%)"
 
 This slide overrides the document-level title and body colors.
 
-# 
+#
 ---
 layout: Blank
 notes: |
   This slide intentionally demonstrates the Blank layout.
 ---
+
+# Markdown in. Editable PowerPoint out.
+---
+layout: Title Slide
+---
+
+Run `uvx markdown-pptx --help` to get started.

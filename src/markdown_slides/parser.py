@@ -18,12 +18,30 @@ from markdown_slides.models import (
     Fonts,
     GradientStop,
     Slide,
+    TableOptions,
     TextColors,
     normalize_layout_name,
 )
 
 DOCUMENT_KEYS = {"aspect_ratio", "fonts", "color_scheme", "background", "title_color", "body_color"}
-SLIDE_KEYS = {"layout", "background", "title_color", "body_color", "hide_background_graphics", "notes"}
+SLIDE_KEYS = {
+    "master",
+    "layout",
+    "background",
+    "title_color",
+    "body_color",
+    "hide_background_graphics",
+    "notes",
+    "table",
+}
+TABLE_OPTION_DEFAULTS = {
+    "header_row": True,
+    "total_row": False,
+    "first_column": False,
+    "last_column": False,
+    "banded_rows": True,
+    "banded_columns": False,
+}
 COLOR_KEYS = {
     "dark_1",
     "light_1",
@@ -57,6 +75,7 @@ RADIAL_RE = re.compile(r"^radial-gradient\((?P<args>.+)\)$", re.IGNORECASE)
 THEME_VAR_RE = re.compile(r"^var\(\s*--(?P<name>[a-z0-9-]+)\s*\)$", re.IGNORECASE)
 SETEXT_RE = re.compile(r"^\s*(=+|-+)\s*$")
 ATX_H1_RE = re.compile(r"^#(?:\s+(.*)|\s*)$")
+FENCE_OPEN_RE = re.compile(r"^[ ]{0,3}(?P<marker>`{3,}|~{3,})(?P<info>.*)$")
 THEME_COLOR_VARS = {
     "dark-1": "dark_1",
     "light-1": "light_1",
@@ -81,6 +100,12 @@ class RawSlide:
     body_markdown: str
 
 
+@dataclass(frozen=True, slots=True)
+class FenceState:
+    character: str
+    length: int
+
+
 def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
     lines = text.splitlines()
     document_config, slides = _split_source(lines, source_name=source_name)
@@ -95,6 +120,12 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
 
     parsed_slides: list[Slide] = []
     for slide_index, raw_slide in enumerate(slides, start=1):
+        master = _parse_master_selector(
+            raw_slide.config.get("master"),
+            line=raw_slide.line_number,
+            slide_index=slide_index,
+            source_name=source_name,
+        )
         layout = raw_slide.config.get("layout")
         if layout is not None and not isinstance(layout, str):
             raise ParseError(
@@ -113,7 +144,15 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
                 slide_index=slide_index,
                 input_path=source_name,
             )
-        hide_background_graphics = bool(raw_slide.config.get("hide_background_graphics", False))
+        hide_background_graphics = raw_slide.config.get("hide_background_graphics", False)
+        if not isinstance(hide_background_graphics, bool):
+            raise ParseError(
+                "invalid_hide_background_graphics",
+                "hide_background_graphics must be true or false.",
+                line=raw_slide.line_number,
+                slide_index=slide_index,
+                input_path=source_name,
+            )
         notes = raw_slide.config.get("notes")
         if notes is not None and not isinstance(notes, str):
             raise ParseError(
@@ -123,12 +162,21 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
                 slide_index=slide_index,
                 input_path=source_name,
             )
+        table_options = _parse_table_options(
+            raw_slide.config.get("table"),
+            configured="table" in raw_slide.config,
+            line=raw_slide.line_number,
+            slide_index=slide_index,
+            source_name=source_name,
+        )
         slide_background = _parse_background(
             raw_slide.config.get("background"),
             line=raw_slide.line_number,
         )
         slide_text_colors = _parse_text_colors(raw_slide.config, line=raw_slide.line_number)
-        _reject_setext(raw_slide.body_markdown.splitlines(), base_line=raw_slide.line_number + 1, source_name=source_name)
+        _reject_setext(
+            raw_slide.body_markdown.splitlines(), base_line=raw_slide.line_number + 1, source_name=source_name
+        )
         body = parse_body_markdown(
             raw_slide.body_markdown,
             source_name=source_name,
@@ -148,15 +196,24 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
             source_name=source_name,
             line=raw_slide.line_number,
         )
+        if "table" in raw_slide.config and len(body.tables) != 1:
+            raise UnsupportedContentError(
+                "Slide table options require the slide body to contain exactly one table.",
+                slide_index=slide_index,
+                line=raw_slide.line_number,
+                input_path=source_name,
+            )
         parsed_slides.append(
             Slide(
                 index=slide_index,
                 title=raw_slide.title,
                 layout=normalized_layout,
+                master=master,
                 background=slide_background,
                 text_colors=slide_text_colors,
                 hide_background_graphics=hide_background_graphics,
                 notes=notes,
+                table_options=table_options,
                 body_markdown=raw_slide.body_markdown,
                 body=body,
                 line_number=raw_slide.line_number,
@@ -176,6 +233,83 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
     )
 
 
+def _parse_table_options(
+    value: object,
+    *,
+    configured: bool,
+    line: int,
+    slide_index: int,
+    source_name: str,
+) -> TableOptions:
+    if not configured:
+        return TableOptions()
+    if not isinstance(value, dict):
+        raise ParseError(
+            "invalid_table_options",
+            "table must be a mapping of PowerPoint table-style options.",
+            line=line,
+            slide_index=slide_index,
+            input_path=source_name,
+        )
+    if any(not isinstance(key, str) for key in value):
+        raise ParseError(
+            "invalid_table_options",
+            "table option keys must be strings.",
+            line=line,
+            slide_index=slide_index,
+            input_path=source_name,
+        )
+    unknown = sorted(set(value) - set(TABLE_OPTION_DEFAULTS))
+    if unknown:
+        raise ParseError(
+            "unknown_table_option_keys",
+            f"Unknown table option key(s): {', '.join(unknown)}.",
+            line=line,
+            slide_index=slide_index,
+            input_path=source_name,
+        )
+    options = TABLE_OPTION_DEFAULTS | value
+    invalid = [key for key, option in value.items() if not isinstance(option, bool)]
+    if invalid:
+        raise ParseError(
+            "invalid_table_options",
+            f"Table option(s) must be true or false: {', '.join(sorted(invalid))}.",
+            line=line,
+            slide_index=slide_index,
+            input_path=source_name,
+        )
+    return TableOptions(**options)
+
+
+def _parse_master_selector(
+    value: object,
+    *,
+    line: int,
+    slide_index: int,
+    source_name: str,
+) -> int | str | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        valid = False
+    elif isinstance(value, int):
+        valid = value > 0
+    elif isinstance(value, str):
+        value = value.strip()
+        valid = bool(value)
+    else:
+        valid = False
+    if not valid:
+        raise ParseError(
+            "invalid_master_selector",
+            "Slide master must be a positive 1-based integer or a non-empty master/theme name.",
+            line=line,
+            slide_index=slide_index,
+            input_path=source_name,
+        )
+    return value
+
+
 def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, object], list[RawSlide]]:
     index = 0
     document_config: dict[str, object] = {}
@@ -187,14 +321,14 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
     current_line: int | None = None
     current_config: dict[str, object] = {}
     current_body: list[str] = []
-    in_fence = False
+    fence: FenceState | None = None
 
     while index < len(lines):
         line = lines[index]
         stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-        match = ATX_H1_RE.match(line) if not in_fence else None
+        was_in_fence = fence is not None
+        fence = _next_fence_state(line, fence)
+        match = ATX_H1_RE.match(line) if not was_in_fence and fence is None else None
         if match:
             if current_title is not None:
                 slides.append(
@@ -248,16 +382,35 @@ def _parse_yaml_front_matter(
     while end_index < len(lines) and lines[end_index].strip() != "---":
         end_index += 1
     if end_index >= len(lines):
-        raise ParseError("unterminated_front_matter", "Front matter block is not terminated.", line=start_index + 1, input_path=source_name)
+        raise ParseError(
+            "unterminated_front_matter",
+            "Front matter block is not terminated.",
+            line=start_index + 1,
+            input_path=source_name,
+        )
     raw = "\n".join(lines[start_index + 1 : end_index])
     try:
         loaded = yaml.safe_load(raw) if raw.strip() else {}
     except yaml.YAMLError as exc:
-        raise ParseError("invalid_yaml", f"Invalid YAML front matter: {exc}", line=start_index + 1, input_path=source_name) from exc
+        raise ParseError(
+            "invalid_yaml", f"Invalid YAML front matter: {exc}", line=start_index + 1, input_path=source_name
+        ) from exc
     if loaded is None:
         loaded = {}
     if not isinstance(loaded, dict):
-        raise ParseError("invalid_front_matter", "Front matter must decode to a mapping.", line=start_index + 1, input_path=source_name)
+        raise ParseError(
+            "invalid_front_matter",
+            "Front matter must decode to a mapping.",
+            line=start_index + 1,
+            input_path=source_name,
+        )
+    if any(not isinstance(key, str) for key in loaded):
+        raise ParseError(
+            "invalid_front_matter",
+            "Front matter keys must be strings.",
+            line=start_index + 1,
+            input_path=source_name,
+        )
     unknown = sorted(set(loaded) - allowed_keys)
     if unknown:
         raise ParseError(
@@ -462,13 +615,13 @@ def _strip_quotes(value: str) -> str:
 
 
 def _reject_setext(lines: list[str], *, base_line: int, source_name: str) -> None:
-    in_fence = False
+    fence: FenceState | None = None
     for index in range(len(lines) - 1):
         current = lines[index]
         next_line = lines[index + 1]
-        if current.strip().startswith("```"):
-            in_fence = not in_fence
-        if in_fence:
+        was_in_fence = fence is not None
+        fence = _next_fence_state(current, fence)
+        if was_in_fence or fence is not None:
             continue
         if current.strip() and SETEXT_RE.match(next_line):
             raise ParseError(
@@ -477,6 +630,19 @@ def _reject_setext(lines: list[str], *, base_line: int, source_name: str) -> Non
                 line=base_line + index,
                 input_path=source_name,
             )
+
+
+def _next_fence_state(line: str, state: FenceState | None) -> FenceState | None:
+    if state is not None:
+        closing = re.match(rf"^[ ]{{0,3}}{re.escape(state.character)}{{{state.length},}}[ \t]*$", line)
+        return None if closing else state
+    opening = FENCE_OPEN_RE.match(line)
+    if opening is None:
+        return None
+    marker = opening.group("marker")
+    if marker[0] == "`" and "`" in opening.group("info"):
+        return None
+    return FenceState(character=marker[0], length=len(marker))
 
 
 def _validate_layout_content(

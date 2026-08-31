@@ -1,16 +1,38 @@
-name: Publish to PyPI
+name: CI
 
 on:
-  release:
-    types:
-      - published
+  push:
+    branches:
+      - main
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  quality:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --locked --all-groups
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+  test:
     strategy:
       fail-fast: false
       matrix:
@@ -32,28 +54,11 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked --all-groups
 
-      - name: Lint and check formatting
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
-
       - name: Run tests
         run: uv run pytest
 
-      - name: Verify release tag matches package version
-        if: github.event_name == 'release' && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-        shell: bash
-        run: |
-          package_version="$(uv run python -c 'from markdown_slides import __version__; print(__version__)')"
-          tag_version="${GITHUB_REF_NAME#v}"
-          test "$package_version" = "$tag_version" || {
-            echo "Package version $package_version does not match release tag $GITHUB_REF_NAME."
-            exit 1
-          }
-
-  build:
-    needs: quality
+  package:
+    needs: [lint, test]
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -80,25 +85,10 @@ jobs:
           python -m venv .wheel-smoke
           .wheel-smoke/bin/python -m pip install dist/*.whl
           .wheel-smoke/bin/markdown-pptx --version
-          .wheel-smoke/bin/markdown-pptx --list-layouts --json
+          .wheel-smoke/bin/markdown-pptx --syntax --json
 
       - name: Upload distributions
         uses: actions/upload-artifact@v7
         with:
           name: distributions
           path: dist/
-
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-    steps:
-      - name: Download distributions
-        uses: actions/download-artifact@v8
-        with:
-          name: distributions
-          path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
