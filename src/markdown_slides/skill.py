@@ -126,9 +126,22 @@ uvx markdown-pptx --input - --output deck.pptx --base-dir ./assets
 
 Remote images are downloaded during rendering. Add `--no-remote-images` for offline work or untrusted Markdown. Download remote assets separately and reference local files when deterministic builds matter.
 
+## Export Slide Images On Windows
+
+When running on Windows with desktop Microsoft PowerPoint installed, use PowerPoint itself to export previews after generating the editable PPTX:
+
+```text
+uvx markdown-pptx deck.md deck.pptx --export-images png --json
+uvx markdown-pptx deck.md deck.pptx --export-images jpeg --slides 1,3-5 --image-width 1600 --json
+```
+
+Use `--image-dir DIR` to choose the destination; otherwise images go into `<pptx-name>-images`. PNG is preferred for slide text and diagrams. The slide selector is 1-based and accepts comma-separated numbers and ranges. Image export requires Windows, an interactive desktop session, and an installed, licensed, initialized PowerPoint application. Do not use these options on Linux or macOS, and do not treat the feature as a server-side or built-in PPTX renderer.
+
+The editable PPTX is retained if PowerPoint image export fails. With `--json`, inspect `error.details.pptx_output` before reporting the partial result. Add `--force` only when replacement of the PPTX or colliding generated images is authorized; unrelated files in the image directory are preserved.
+
 ## Overwrite Safety
 
-The CLI refuses to overwrite an existing output. Add `--force` only when the user explicitly permits replacement or the output is a disposable generated artifact.
+The CLI refuses to overwrite an existing output or colliding generated image. Add `--force` only when the user explicitly permits replacement or the output is a disposable generated artifact.
 
 ```text
 uvx markdown-pptx deck.md deck.pptx --force --json

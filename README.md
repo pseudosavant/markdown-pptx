@@ -64,6 +64,24 @@ markdown-pptx --about
 
 Running `markdown-pptx` with no arguments prints the same concise quick reference as `--help`. Inspection commands accept `--json` and reject unrelated render flags so automation cannot accidentally invoke an ambiguous mode.
 
+### Export slide images with desktop PowerPoint on Windows
+
+On Windows, `markdown-pptx` can ask the installed desktop PowerPoint application to export the completed presentation as PNG or JPEG images. The `.pptx` remains the canonical output; this is an optional PowerPoint-backed post-render step, not a built-in PPTX renderer.
+
+```powershell
+# Export every slide as PNG at 1920 pixels wide
+uvx markdown-pptx deck.md --export-images png
+
+# Export selected slides with an explicit destination and width
+uvx markdown-pptx deck.md deck.pptx --export-images jpeg --slides 1,3-5 --image-dir deck-previews --image-width 1600
+```
+
+The default directory is `<pptx-name>-images`, and files use stable names such as `slide-001.png`. `--slides` is a strict, 1-based comma/range selector; descending ranges, duplicates, zero, and out-of-range slides are rejected. Image height is inferred from the PowerPoint page size so the slide is not distorted. PNG is recommended for text, diagrams, and other presentation graphics.
+
+Image export requires Windows, an interactive signed-in desktop session, and a locally installed, licensed, initialized copy of Microsoft PowerPoint. The image options appear in `--help` only on Windows. They remain parseable elsewhere so a copied command receives the stable `powerpoint_export_unavailable` error instead of an unrecognized-argument failure. If PowerPoint image export fails, the successfully generated `.pptx` is retained and identified in JSON error details.
+
+Exports are staged before publication, so a PowerPoint failure does not leave partial images. Existing generated image files require `--force`; unrelated files in the image directory are preserved.
+
 When you use `--template`, every embedded slide master is retained in the output. This keeps all of the template's layout groups available in PowerPoint, so a slide can be reassigned later from PowerPoint's **Layout** gallery without rebuilding the deck. The template's existing theme colors and theme fonts are kept unless the Markdown explicitly sets `color_scheme` or `fonts`.
 
 The first master is the default. Use `--list-masters --template theme.pptx` to inspect the available masters and `--master 2` (or an exact unique master/theme name) to choose another default. Use `--list-layouts --template theme.pptx --master 2 --json` to inspect the layouts, placeholders, and compatibility results for that master. Numeric master selectors are 1-based and are the most reliable choice because PowerPoint templates can contain blank or duplicate names.
@@ -316,7 +334,7 @@ Pipe tables treat the first Markdown row as the table header. The PowerPoint out
 - `7`: PowerPoint rendering error
 - `8`: unexpected internal error
 
-With `--json`, failures are written as structured JSON with a stable error code and relevant input, line, and slide context. Successful render JSON includes the default master, retained-master count, and masters actually used by generated slides.
+With `--json`, failures are written as structured JSON with a stable error code and relevant input, line, slide, and partial-output context. Successful render JSON includes the default master, retained-master count, masters actually used by generated slides, and exported image paths when PowerPoint image export is enabled.
 
 ## Examples
 
@@ -340,6 +358,13 @@ uv sync --locked --all-groups
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
+```
+
+The real PowerPoint export smoke test is opt-in and requires desktop PowerPoint:
+
+```powershell
+$env:MARKDOWN_PPTX_TEST_POWERPOINT="1"
+uv run pytest tests/test_powerpoint_integration.py
 ```
 
 Build distributables:

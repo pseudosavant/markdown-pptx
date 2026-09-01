@@ -13,6 +13,14 @@ from markdown_slides.assets import default_template_path, list_color_scheme_name
 from markdown_slides.errors import EXIT_INTERNAL, InputError, MarkdownSlidesError, UsageError
 from markdown_slides.models import Background, Deck
 from markdown_slides.parser import parse_deck
+from markdown_slides.powerpoint_export import (
+    DEFAULT_IMAGE_WIDTH,
+    MAX_IMAGE_WIDTH,
+    default_image_directory,
+    export_powerpoint_images,
+    parse_slide_selection,
+    powerpoint_image_export_available,
+)
 from markdown_slides.renderer import list_layout_details, list_master_details, render_pptx
 from markdown_slides.skill import install_skill, remove_skill
 
@@ -37,7 +45,7 @@ class CliArgumentParser(argparse.ArgumentParser):
         raise UsageError(message)
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(*, platform: str | None = None) -> argparse.ArgumentParser:
     parser = CliArgumentParser(
         prog=PROGRAM_NAME,
         description=PROJECT_SUMMARY,
@@ -55,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Default slide master: a 1-based index or exact unique master/theme name.",
     )
     parser.add_argument("--base-dir", help="Resolve relative assets from this directory when reading stdin.")
-    parser.add_argument("--force", action="store_true", help="Overwrite an existing output file.")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing generated outputs.")
     parser.add_argument(
         "--ignore-document-colors",
         action="store_true",
@@ -72,6 +80,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reject HTTP(S) image URLs instead of downloading them.",
     )
     parser.add_argument("--json", action="store_true", help="Emit structured JSON output.")
+    image_help = powerpoint_image_export_available(platform)
+    parser.add_argument(
+        "--export-images",
+        choices=("png", "jpeg"),
+        help="Export slides through desktop PowerPoint as png or jpeg." if image_help else argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--image-dir",
+        help="Directory for exported slide images." if image_help else argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--slides",
+        help="1-based slides to export, such as 1,3-5; defaults to all." if image_help else argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--image-width",
+        type=int,
+        help=f"Export width in pixels; defaults to {DEFAULT_IMAGE_WIDTH}." if image_help else argparse.SUPPRESS,
+    )
     parser.add_argument("--list-masters", action="store_true", help="List slide masters embedded in the template.")
     parser.add_argument("--list-layouts", action="store_true", help="List layouts on the selected template master.")
     parser.add_argument("--list-color-schemes", action="store_true", help="List built-in Office color schemes.")
@@ -81,8 +108,17 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def build_root_help() -> str:
+def build_root_help(*, platform: str | None = None) -> str:
     exit_lines = "\n".join(f"  {code}  {meaning}" for code, meaning in EXIT_CODES)
+    image_section = ""
+    if powerpoint_image_export_available(platform):
+        image_section = f"""PowerPoint image export (Windows):
+  --export-images FORMAT      Export slides as png or jpeg.
+  --image-dir PATH            Directory for exported slide images.
+  --slides RANGE              Export 1-based slides such as 1,3-5; default: all.
+  --image-width PIXELS        Export width; default: {DEFAULT_IMAGE_WIDTH}.
+
+"""
     return f"""{PROGRAM_NAME} {__version__}
 {PROJECT_SUMMARY}
 
@@ -108,13 +144,13 @@ Common options:
   -h, --help                  Show this quick reference.
   --template PATH             Use a PowerPoint template.
   --master MASTER             Default to a 1-based master index or unique name.
-  --force                     Overwrite an existing output.
+  --force                     Overwrite existing generated outputs.
   --no-remote-images          Reject HTTP(S) images.
   --ignore-document-colors    Keep template document colors.
   --ignore-slide-colors       Keep template slide colors.
   --json                      Emit structured output.
 
-Metadata:
+{image_section}Metadata:
   {PROGRAM_NAME} --about
   {PROGRAM_NAME} --version
 
@@ -331,6 +367,18 @@ def _run(args: argparse.Namespace, *, stdin: TextIO, stdout: TextIO) -> int:
         if input_path is not None
         else Path("deck.pptx").resolve()
     )
+    image_options = {
+        "--image-dir": args.image_dir,
+        "--slides": args.slides,
+        "--image-width": args.image_width,
+    }
+    if args.export_images is None:
+        orphaned = [name for name, value in image_options.items() if value is not None]
+        if orphaned:
+            raise UsageError(f"{', '.join(orphaned)} require --export-images png or --export-images jpeg.")
+    if args.image_width is not None and not 1 <= args.image_width <= MAX_IMAGE_WIDTH:
+        raise UsageError(f"--image-width must be between 1 and {MAX_IMAGE_WIDTH} pixels.")
+
     deck = parse_deck(source_text, input_path=input_path, source_name=source_name)
     deck = _apply_color_ignore_flags(
         deck,
@@ -338,6 +386,14 @@ def _run(args: argparse.Namespace, *, stdin: TextIO, stdout: TextIO) -> int:
         ignore_slide_colors=args.ignore_slide_colors,
     )
     template_path = Path(args.template).resolve() if args.template else None
+    selected_slides = parse_slide_selection(args.slides, slide_count=len(deck.slides)) if args.export_images else None
+    image_dir = (
+        Path(args.image_dir).resolve()
+        if args.image_dir
+        else default_image_directory(output_path)
+        if args.export_images
+        else None
+    )
     render_report: dict[str, object] = {}
     rendered_path = render_pptx(
         deck,
@@ -349,27 +405,39 @@ def _run(args: argparse.Namespace, *, stdin: TextIO, stdout: TextIO) -> int:
         master=args.master,
         report=render_report,
     )
-    if args.json:
-        stdout.write(
-            json.dumps(
-                {
-                    "ok": True,
-                    "mode": "render",
-                    "input": source_name,
-                    "output": str(rendered_path),
-                    "template": str(template_path or default_template_path()),
-                    "slides": len(deck.slides),
-                    "ignore_document_colors": args.ignore_document_colors,
-                    "ignore_slide_colors": args.ignore_slide_colors,
-                    "remote_images": not args.no_remote_images,
-                    **render_report,
-                },
-                indent=2,
-            )
-            + "\n"
+    image_report = None
+    if args.export_images:
+        assert selected_slides is not None
+        assert image_dir is not None
+        image_report = export_powerpoint_images(
+            rendered_path,
+            output_dir=image_dir,
+            image_format=args.export_images,
+            slide_numbers=selected_slides,
+            slide_count=len(deck.slides),
+            width=args.image_width or DEFAULT_IMAGE_WIDTH,
+            force=args.force,
         )
+    if args.json:
+        payload = {
+            "ok": True,
+            "mode": "render",
+            "input": source_name,
+            "output": str(rendered_path),
+            "template": str(template_path or default_template_path()),
+            "slides": len(deck.slides),
+            "ignore_document_colors": args.ignore_document_colors,
+            "ignore_slide_colors": args.ignore_slide_colors,
+            "remote_images": not args.no_remote_images,
+            **render_report,
+        }
+        if image_report is not None:
+            payload["images"] = image_report
+        stdout.write(json.dumps(payload, indent=2) + "\n")
     else:
         stdout.write(f"{rendered_path}\n")
+        if image_report is not None:
+            stdout.write(f"Exported {len(image_report['slides'])} slide image(s) to {image_report['directory']}\n")
     return 0
 
 
@@ -413,17 +481,20 @@ def _write_result(payload: dict[str, object], lines: list[str], json_mode: bool,
 def _write_error(exc: MarkdownSlidesError, *, json_mode: bool, stdout: TextIO, stderr: TextIO) -> None:
     context = exc.context
     if json_mode:
+        error = {
+            "code": context.code,
+            "message": context.message,
+            "line": context.line,
+            "slide_index": context.slide_index,
+            "input": context.input_path,
+        }
+        if context.details is not None:
+            error["details"] = context.details
         stdout.write(
             json.dumps(
                 {
                     "ok": False,
-                    "error": {
-                        "code": context.code,
-                        "message": context.message,
-                        "line": context.line,
-                        "slide_index": context.slide_index,
-                        "input": context.input_path,
-                    },
+                    "error": error,
                 },
                 indent=2,
             )

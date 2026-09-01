@@ -7,9 +7,12 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from markdown_slides import __version__
 from markdown_slides.assets import default_template_path
-from markdown_slides.cli import _apply_color_ignore_flags, build_root_help, main
+from markdown_slides.cli import _apply_color_ignore_flags, build_parser, build_root_help, main
+from markdown_slides.errors import RenderError
 from markdown_slides.parser import parse_deck
 
 
@@ -47,6 +50,27 @@ def test_help_mentions_agent_friendly_modes() -> None:
     assert "skill install" in help_text
     assert "--no-remote-images" in help_text
     assert "markdown-pptx deck.md" in help_text
+
+
+def test_help_shows_powerpoint_image_export_only_on_windows() -> None:
+    windows_help = build_root_help(platform="win32")
+    linux_help = build_root_help(platform="linux")
+    macos_help = build_root_help(platform="darwin")
+
+    assert "PowerPoint image export (Windows)" in windows_help
+    assert "--export-images" in windows_help
+    assert "--image-width" in windows_help
+    assert "--export-images" not in linux_help
+    assert "--export-images" not in macos_help
+
+
+def test_non_windows_parser_accepts_hidden_image_export_options() -> None:
+    parser = build_parser(platform="linux")
+
+    args = parser.parse_args(["deck.md", "--export-images", "png", "--slides", "1,3-5"])
+
+    assert args.export_images == "png"
+    assert args.slides == "1,3-5"
 
 
 def test_list_color_schemes_plain_output() -> None:
@@ -279,6 +303,8 @@ def test_skill_install_and_remove(tmp_path: Path) -> None:
     assert "preset: null" in skill_content
     assert "## Style Tables With Slide Metadata" in skill_content
     assert "banded_columns: false" in skill_content
+    assert "## Export Slide Images On Windows" in skill_content
+    assert "uvx markdown-pptx deck.md deck.pptx --export-images png --json" in skill_content
     command_lines = [
         line.strip()
         for line in skill_content.splitlines()
@@ -309,7 +335,9 @@ def test_skill_install_and_remove(tmp_path: Path) -> None:
     assert exit_code == 0
     assert payload["created"] is False
     assert payload["updated"] is True
-    assert "## Style Tables With Slide Metadata" in skill_file.read_text(encoding="utf-8")
+    updated_content = skill_file.read_text(encoding="utf-8")
+    assert "## Style Tables With Slide Metadata" in updated_content
+    assert "## Export Slide Images On Windows" in updated_content
 
     stdout = io.StringIO()
     exit_code = main(
@@ -435,6 +463,99 @@ def test_render_json_output(tmp_path: Path) -> None:
     assert payload["ignore_document_colors"] is False
     assert payload["ignore_slide_colors"] is False
     assert Path(payload["output"]).exists()
+    assert stderr.getvalue() == ""
+
+
+def test_image_options_require_export_images(tmp_path: Path) -> None:
+    deck = tmp_path / "deck.md"
+    deck.write_text("# Slide\n\nBody.\n", encoding="utf-8")
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main([str(deck), "--slides", "1"], stdout=stdout, stderr=stderr)
+
+    assert exit_code == 2
+    assert "--slides require --export-images" in stderr.getvalue()
+    assert not deck.with_suffix(".pptx").exists()
+
+
+def test_image_export_json_reports_selected_images(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    deck = tmp_path / "deck.md"
+    deck.write_text("# First\n\nOne.\n\n# Second\n\nTwo.\n", encoding="utf-8")
+    output = tmp_path / "deck.pptx"
+    image_dir = tmp_path / "previews"
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    def fake_export(pptx_path: Path, **kwargs: object) -> dict[str, object]:
+        assert pptx_path == output
+        assert pptx_path.is_file()
+        assert kwargs["image_format"] == "png"
+        assert kwargs["slide_numbers"] == [2]
+        assert kwargs["slide_count"] == 2
+        assert kwargs["width"] == 800
+        assert kwargs["force"] is False
+        return {
+            "backend": "powerpoint",
+            "format": "png",
+            "directory": str(image_dir),
+            "width": 800,
+            "height": 450,
+            "slides": [{"slide": 2, "path": str(image_dir / "slide-002.png")}],
+        }
+
+    monkeypatch.setattr("markdown_slides.cli.export_powerpoint_images", fake_export)
+    exit_code = main(
+        [
+            str(deck),
+            str(output),
+            "--export-images",
+            "png",
+            "--image-dir",
+            str(image_dir),
+            "--slides",
+            "2",
+            "--image-width",
+            "800",
+            "--json",
+        ],
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 0
+    assert payload["images"]["backend"] == "powerpoint"
+    assert payload["images"]["slides"] == [{"slide": 2, "path": str(image_dir / "slide-002.png")}]
+    assert stderr.getvalue() == ""
+
+
+def test_image_export_failure_reports_retained_pptx_in_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    deck = tmp_path / "deck.md"
+    deck.write_text("# Slide\n\nBody.\n", encoding="utf-8")
+    output = tmp_path / "deck.pptx"
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    def failing_export(pptx_path: Path, **kwargs: object) -> dict[str, object]:
+        raise RenderError(
+            "powerpoint_export_unavailable",
+            "Image export requires Windows; the PPTX was retained.",
+            details={"pptx_output": str(pptx_path), "image_directory": str(kwargs["output_dir"])},
+        )
+
+    monkeypatch.setattr("markdown_slides.cli.export_powerpoint_images", failing_export)
+    exit_code = main(
+        [str(deck), str(output), "--export-images", "png", "--json"],
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 7
+    assert output.is_file()
+    assert payload["error"]["code"] == "powerpoint_export_unavailable"
+    assert payload["error"]["details"]["pptx_output"] == str(output)
     assert stderr.getvalue() == ""
 
 

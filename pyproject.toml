@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "markdown-pptx"
-version = "1.1.0"
+version = "1.2.0"
 description = "Convert constrained Markdown slide decks into editable PowerPoint presentations."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,6 +31,7 @@ dependencies = [
   "Pillow>=10.0",
   "PyYAML>=6.0",
   "python-pptx>=1.0.2",
+  "pywin32>=311; sys_platform == 'win32'",
 ]
 
 [project.urls]
@@ -48,6 +49,9 @@ packages = ["src/markdown_slides"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--basetemp=.pytest-tmp"
+markers = [
+  "powerpoint: requires an interactive Windows session with desktop Microsoft PowerPoint",
+]
 
 [dependency-groups]
 dev = [

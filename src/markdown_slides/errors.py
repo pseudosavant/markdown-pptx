@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -20,6 +21,7 @@ class ErrorContext:
     line: int | None = None
     slide_index: int | None = None
     input_path: str | None = None
+    details: dict[str, Any] | None = None
 
 
 class MarkdownSlidesError(Exception):
@@ -32,6 +34,7 @@ class MarkdownSlidesError(Exception):
         line: int | None = None,
         slide_index: int | None = None,
         input_path: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.context = ErrorContext(
@@ -41,6 +44,7 @@ class MarkdownSlidesError(Exception):
             line=line,
             slide_index=slide_index,
             input_path=input_path,
+            details=details,
         )
 
 
@@ -105,5 +109,5 @@ class UnsupportedContentError(MarkdownSlidesError):
 
 
 class RenderError(MarkdownSlidesError):
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(code, message, exit_code=EXIT_RENDER)
+    def __init__(self, code: str, message: str, *, details: dict[str, Any] | None = None) -> None:
+        super().__init__(code, message, exit_code=EXIT_RENDER, details=details)

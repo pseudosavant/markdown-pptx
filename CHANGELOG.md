@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0
+
+- Add optional Windows desktop PowerPoint image export for all or selected slides as PNG/JPEG, with deterministic filenames, aspect-preserving dimensions, isolated automation, transactional staging, structured output/errors, and platform-aware help.
+- Remove the obsolete Berlin-template sample trio now superseded by the current multi-master showcase.
+
 ## 1.1.0
 
 - Align the CLI with the sibling agent tools: useful no-argument help, `--about`, exact inspection modes, stable exit codes, JSON errors, and managed `skill install` / `skill remove` commands.
