@@ -1,245 +1,161 @@
 # markdown-pptx
 
-`markdown-pptx` is a Markdown-to-PowerPoint CLI for both people and agents. You can use it directly from the terminal, but the format and CLI are intentionally designed to be easy for coding agents to use reliably, and this extends their natural strength with Markdown into generating real, editable PowerPoint slides instead of plain text outlines or ad hoc exports.
+`markdown-pptx` turns constrained Markdown into editable PowerPoint `.pptx` presentations built from real PowerPoint layouts and placeholders. It is a strict, predictable CLI designed for both people and coding agents.
 
-It converts constrained Markdown slide decks into editable PowerPoint `.pptx` presentations using real PowerPoint layouts and placeholders. The format is intentionally strict: each `# H1` starts a slide, YAML front matter controls document and slide behavior, and the tool exposes inspection-friendly modes like `--syntax`, `--list-masters`, `--list-layouts`, and `--list-color-schemes` while failing on ambiguous mappings instead of inventing free-positioned text boxes.
+## Quick start with an agent
 
+Install the managed agent skill:
 
-## What it does
-
-Convert markdown like this:
-
-```markdown
-# What markdown-pptx is
-
-`markdown-pptx` converts constrained Markdown slide decks into editable PowerPoint `.pptx` presentations.
-
-It uses real PowerPoint layouts and placeholders, so the output stays easy to edit in PowerPoint instead of becoming a pile of free-positioned text boxes.
+```powershell
+uvx markdown-pptx skill install
 ```
 
-Into this:
+Then use `$markdown-pptx` in Codex, Claude Code, or another agent harness that supports skills:
+
+> Use $markdown-pptx to create a seven-slide presentation about our product launch. Use a clear narrative, include speaker notes, and save both the Markdown source and editable PowerPoint deck.
+
+The skill teaches the agent how to inspect the format and templates, write valid slide Markdown, render the deck, and handle the result.
+
+## What it creates
+
+Markdown stays readable, while the generated presentation remains easy to edit in PowerPoint.
 
 ![Rendered PowerPoint slide example](https://github.com/user-attachments/assets/99859d77-ca0b-4f4c-9dee-ac2be729a0e9)
 
-## Install
+## Use the CLI directly
 
-### Run directly with uvx
+Render a deck without installing the package globally:
 
 ```powershell
-uvx markdown-pptx --help
+uvx markdown-pptx deck.md deck.pptx
 ```
 
-### Install as a tool
+Inspect the supported format or the layouts in the default template:
+
+```powershell
+uvx markdown-pptx --syntax
+uvx markdown-pptx --list-layouts
+```
+
+To install the command as a persistent tool instead:
 
 ```powershell
 uv tool install markdown-pptx
 ```
 
-### Install the agent skill
+The examples below continue to use `uvx markdown-pptx` so they work without a global installation.
 
-Install a managed, agent-neutral skill into the shared `~/.agents/skills` convention:
+## How the format works
 
-```powershell
-uvx markdown-pptx skill install
-uvx markdown-pptx skill remove
-```
+The document model has four core rules:
 
-Use `--skills-dir DIR` to target another skill root. Removal is idempotent and refuses to delete an unmarked, user-managed skill unless `--force` is explicitly supplied.
+1. Optional document front matter may appear only at the beginning of the file.
+2. Each `# H1` starts exactly one slide.
+3. Optional slide front matter may appear only immediately after its H1.
+4. Everything until the next H1 belongs to that slide.
 
-## CLI
-
-```powershell
-markdown-pptx deck.md
-markdown-pptx deck.md out.pptx
-markdown-pptx deck.md --ignore-document-colors
-markdown-pptx deck.md --ignore-document-colors --ignore-slide-colors
-markdown-pptx --list-masters --template theme.pptx
-markdown-pptx --list-layouts
-markdown-pptx --list-layouts --template theme.pptx --master 2
-markdown-pptx deck.md out.pptx --template theme.pptx --master 2
-markdown-pptx --list-color-schemes
-markdown-pptx --syntax
-markdown-pptx --about
-```
-
-Running `markdown-pptx` with no arguments prints the same concise quick reference as `--help`. Inspection commands accept `--json` and reject unrelated render flags so automation cannot accidentally invoke an ambiguous mode.
-
-### Export slide images with desktop PowerPoint on Windows
-
-On Windows, `markdown-pptx` can ask the installed desktop PowerPoint application to export the completed presentation as PNG or JPEG images. The `.pptx` remains the canonical output; this is an optional PowerPoint-backed post-render step, not a built-in PPTX renderer.
-
-```powershell
-# Export every slide as PNG at 1920 pixels wide
-uvx markdown-pptx deck.md --export-images png
-
-# Export selected slides with an explicit destination and width
-uvx markdown-pptx deck.md deck.pptx --export-images jpeg --slides 1,3-5 --image-dir deck-previews --image-width 1600
-```
-
-The default directory is `<pptx-name>-images`, and files use stable names such as `slide-001.png`. `--slides` is a strict, 1-based comma/range selector; descending ranges, duplicates, zero, and out-of-range slides are rejected. Image height is inferred from the PowerPoint page size so the slide is not distorted. PNG is recommended for text, diagrams, and other presentation graphics.
-
-Image export requires Windows, an interactive signed-in desktop session, and a locally installed, licensed, initialized copy of Microsoft PowerPoint. The image options appear in `--help` only on Windows. They remain parseable elsewhere so a copied command receives the stable `powerpoint_export_unavailable` error instead of an unrecognized-argument failure. If PowerPoint image export fails, the successfully generated `.pptx` is retained and identified in JSON error details.
-
-Exports are staged before publication, so a PowerPoint failure does not leave partial images. Existing generated image files require `--force`; unrelated files in the image directory are preserved.
-
-When you use `--template`, every embedded slide master is retained in the output. This keeps all of the template's layout groups available in PowerPoint, so a slide can be reassigned later from PowerPoint's **Layout** gallery without rebuilding the deck. The template's existing theme colors and theme fonts are kept unless the Markdown explicitly sets `color_scheme` or `fonts`.
-
-The first master is the default. Use `--list-masters --template theme.pptx` to inspect the available masters and `--master 2` (or an exact unique master/theme name) to choose another default. Use `--list-layouts --template theme.pptx --master 2 --json` to inspect the layouts, placeholders, and compatibility results for that master. Numeric master selectors are 1-based and are the most reliable choice because PowerPoint templates can contain blank or duplicate names.
-
-A slide-level `master` value overrides the CLI default for that slide. Selection precedence is slide `master`, then CLI `--master`, then the first embedded master. Layout lookup and duplicate-name checks are scoped to the selected master. Selecting a master never removes the others from the output.
-
-Document-level backgrounds are applied to every retained master. Explicit document `color_scheme` and `fonts` overrides update every theme referenced by the retained masters; without those overrides, template themes are preserved.
-
-`--ignore-document-colors` ignores document-level markdown color settings (`color_scheme`, `title_color`, `body_color`, and non-image document backgrounds). `--ignore-slide-colors` ignores slide-level `title_color`, `body_color`, and non-image slide backgrounds. Use both flags together to let the template provide all colors while still keeping the markdown content and layouts.
-
-Remote HTTP(S) images are enabled by default. Downloads are streamed, cached per URL during a render, limited to 25 MiB, checked for an image content type when the server supplies one, decoded with Pillow, and limited to 50 million pixels. Use `--no-remote-images` for offline builds or untrusted Markdown. For reproducible builds, download assets ahead of time and reference local files.
-
-## Format
-
-### Document structure
-
-1. An optional document front matter block may appear only at the top of the file.
-2. Each `# H1` starts a new slide.
-3. An optional slide front matter block may appear only immediately after an `# H1`.
-4. Everything until the next `# H1` is that slide's body content.
-
-### Example deck
+A minimal two-slide deck looks like this:
 
 ```markdown
----
-aspect_ratio: "16:9"
-fonts:
-  body: Aptos
-  headings: Aptos Display
-color_scheme:
-  preset: Office
-title_color: "var(--dark-1)"
-body_color: "var(--dark-1)"
-background: "linear-gradient(90deg, var(--light-1) 0%, var(--light-2) 100%)"
----
-
-# Title slide
+# Quarterly review
 ---
 layout: Title Slide
-notes: |
-  Introduce the deck.
 ---
 
-Markdown in. Editable PowerPoint out.
+Acme Corporation
 
-# Overview
+# Highlights
 ---
-master: 1
 layout: Title and Content
-background: "linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)"
 ---
 
-## Goals
-- Keep the markdown readable
-- Use real PowerPoint placeholders
-- Fail on ambiguous mappings
+- Revenue grew 18%
+- Customer retention reached 94%
+- Two new products launched
 ```
 
-## Document-level front matter
+Render it with:
 
-These keys are valid only in the opening front matter block at the top of the document:
+```powershell
+uvx markdown-pptx deck.md deck.pptx
+```
 
-- `aspect_ratio`
-  - `"16:9"` or `"4:3"`
-- `fonts`
-  - `body`
-  - `headings`
-- `color_scheme`
-  - `preset: Office`
-  - or explicit overrides for the 12 PowerPoint theme colors
-- `background`
-  - solid color
-  - `linear-gradient(...)`
-  - `radial-gradient(...)`
-  - `url(...)`
-  - `none`
-- `title_color`
-  - default color for title placeholders across the deck
-- `body_color`
-  - default color for body/subtitle placeholders across the deck
+If no `--template` is provided, the packaged default template is used.
 
-### Document front matter example
+## Use a PowerPoint template
+
+Inspect a template before writing the deck, then use only the layouts it provides:
+
+```powershell
+uvx markdown-pptx --list-masters --template theme.pptx
+uvx markdown-pptx --list-layouts --template theme.pptx --master 2
+uvx markdown-pptx deck.md deck.pptx --template theme.pptx --master 2
+```
+
+All embedded slide masters are retained in the output. This keeps every layout group available in PowerPoint after the deck is generated.
+
+The effective master is selected in this order:
+
+1. The slide-level `master` value
+2. The CLI `--master` option
+3. The first embedded master
+
+Master selectors may be 1-based indices or exact unique master or theme names. Indices are the most reliable choice because template names can be blank or duplicated. Layout names are resolved only within the effective master.
+
+The renderer uses real placeholders for slide titles and bodies. Missing placeholders, duplicate layout names, and ambiguous placeholder mappings are errors. It does not invent free-positioned text boxes to compensate for an incompatible template.
+
+## Customize a deck
+
+Document front matter sets deck-wide defaults:
+
+| Key | Purpose |
+| --- | --- |
+| `aspect_ratio` | Select `16:9` or `4:3` |
+| `fonts` | Set body and heading fonts |
+| `color_scheme` | Start from a preset or define PowerPoint theme colors |
+| `background` | Set a solid color, gradient, image, or no background |
+| `title_color` | Set the default title color |
+| `body_color` | Set the default body and subtitle color |
+
+Slide front matter controls an individual slide:
+
+| Key | Purpose |
+| --- | --- |
+| `master` | Override the default slide master |
+| `layout` | Select a layout from the effective master |
+| `background` | Override the document background |
+| `title_color` | Override the document title color |
+| `body_color` | Override the document body color |
+| `hide_background_graphics` | Hide inherited master graphics |
+| `notes` | Add speaker notes to the PowerPoint notes pane |
+| `table` | Set native PowerPoint table-style flags |
+
+Run `uvx markdown-pptx --syntax` for the complete schema, accepted values, and examples.
+
+### Theme colors
+
+Use `color_scheme` to recolor theme-aware template content throughout the presentation:
 
 ```yaml
 ---
-aspect_ratio: "16:9"
-fonts:
-  body: Aptos
-  headings: Aptos Display
-color_scheme:
-  preset: Office
-title_color: "var(--dark-1)"
-body_color: "var(--accent-4)"
-background: "linear-gradient(90deg, var(--light-1) 0%, var(--light-2) 100%)"
----
-```
-
-## Slide-level front matter
-
-These keys are valid only immediately after a slide `# H1`:
-
-- `master`
-  - a positive 1-based index, such as `1` or `2`
-  - or an exact unique slide-master/theme name reported by `--list-masters`
-  - overrides the CLI `--master` default for that slide
-- `layout`
-  - `Title Slide`
-  - `Title and Content`
-  - `Section Header`
-  - `Title Only`
-  - `Blank`
-- `background`
-  - overrides the document background for that slide
-- `title_color`
-  - overrides the document title color for that slide
-- `body_color`
-  - overrides the document body color for that slide
-- `hide_background_graphics`
-  - hides inherited master graphics on that slide
-- `notes`
-  - speaker notes stored in the PPTX notes pane
-- `table`
-  - PowerPoint table-style options for a slide containing exactly one pipe table
-  - `header_row`, `total_row`, `first_column`, `last_column`, `banded_rows`, and `banded_columns`
-  - every option must be `true` or `false`
-
-### Slide front matter example
-
-```markdown
-# Section break
----
-master: 1
-layout: Section Header
-background: "linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)"
-title_color: "var(--light-1)"
-body_color: "var(--light-1)"
-notes: |
-  Introduce the next section.
----
-
-This subtitle is rendered into the Section Header body/subtitle placeholder.
-```
-
-`color_scheme` can start from a built-in preset and override only selected slots. This is useful when a template already has the right layouts but needs a bespoke palette:
-
-```yaml
 color_scheme:
   preset: Office
   dark_1: "#10263F"
   light_1: "#F9F9F9"
   accent_1: "#1D6FA8"
   accent_2: "#5AA9E6"
-  accent_3: "#FFB347"
+title_color: "var(--dark-1)"
+body_color: "var(--dark-2)"
+---
 ```
 
-For a completely custom PowerPoint theme, set `preset: null` and provide all 12 slots: `dark_1`, `light_1`, `dark_2`, `light_2`, `accent_1` through `accent_6`, `hyperlink`, and `followed_hyperlink`. Theme-aware template objects and `var(--...)` references follow the resulting palette; hard-coded RGB colors and images do not.
+Colors accept hex, RGB, HSL, and PowerPoint theme references such as `var(--accent-1)`. Set `preset: null` and provide all 12 theme slots for a fully custom palette. Theme-aware template objects follow the resulting palette, while hard-coded RGB colors and images do not.
 
-Table styling is also slide metadata, leaving the pipe table itself as standard Markdown:
+When a template should provide the colors, use `--ignore-document-colors`, `--ignore-slide-colors`, or both. These options do not change images, layouts, or content.
+
+### Tables
+
+Write standard Markdown pipe tables and put PowerPoint styling options in slide front matter:
 
 ```markdown
 # Quarterly summary
@@ -249,9 +165,7 @@ table:
   header_row: true
   total_row: true
   first_column: true
-  last_column: false
   banded_rows: true
-  banded_columns: false
 ---
 
 | Region | Revenue |
@@ -260,58 +174,42 @@ table:
 | Total | $50,000 |
 ```
 
-`total_row`, `first_column`, and `last_column` apply PowerPoint styling only; they do not calculate totals or change table semantics. Setting `header_row: false` removes the special PowerPoint header styling, but the first Markdown row remains the syntactic table header.
+Table flags control native PowerPoint styling. They do not calculate totals or change the Markdown table structure. A slide may use `table` metadata only when its body contains exactly one table.
 
-## Supported color syntax
+### Images and paths
 
-For `title_color`, `body_color`, and color-bearing backgrounds/gradient stops:
+Local image paths are resolved relative to the Markdown file. Remote HTTP and HTTPS images are enabled by default. Use `--no-remote-images` for offline builds or untrusted Markdown. Download assets ahead of time and use local paths when reproducible builds matter.
 
-- Hex: `#0E2841`
-- RGB: `rgb(14, 40, 65)`
-- HSL: `hsl(210, 65%, 15%)`
-- Theme references:
-  - `var(--dark-1)`
-  - `var(--light-1)`
-  - `var(--dark-2)`
-  - `var(--light-2)`
-  - `var(--accent-1)` through `var(--accent-6)`
-  - `var(--hyperlink)`
-  - `var(--followed-hyperlink)`
+When reading Markdown from stdin, provide an output path and a base directory for relative assets:
 
-## Supported markdown
+```powershell
+uvx markdown-pptx --input - --output deck.pptx --base-dir ./assets
+```
+
+## Layouts and supported content
+
+The built-in template provides these common layouts. Supplied templates may use different names and placeholders.
+
+| Layout | Body behavior |
+| --- | --- |
+| `Title Slide` | Body text is placed in the subtitle placeholder |
+| `Section Header` | Body text is placed in the subtitle or body placeholder |
+| `Title and Content` | Accepts text flow, one image, or one table |
+| `Title Only` | Does not accept body content |
+| `Blank` | Requires an empty title and empty body |
+
+Supported Markdown includes:
 
 - Paragraphs
-- Bullet lists
-- Ordered lists
-- Nested lists up to three levels
-- `##` through `######` headings inside a slide
-- Emphasis, strong, inline code, links
+- Bullet and ordered lists, nested up to three levels
+- `##` through `######` headings within a slide
+- Emphasis, strong text, inline code, and links
 - Fenced code blocks
 - Blockquotes
 - Pipe tables
-- Local images
-- Remote images
+- Local and remote images
 
-Fenced code blocks follow CommonMark fence rules: backticks or tildes, a run of at least three markers, and a closing run using the same marker with at least the opening length.
-
-Pipe tables treat the first Markdown row as the table header. The PowerPoint output uses the `Medium Style 1 - Accent 1` table style. Defaults are **Header Row** and **Banded Rows** enabled, with **Total Row**, **First Column**, **Last Column**, and **Banded Columns** disabled. Override those native PowerPoint flags with slide-level `table` metadata.
-
-## Layout and rendering rules
-
-- All embedded template masters are retained in the output.
-- Master selection precedence is slide `master`, CLI `--master`, then master `1`.
-- Master and theme names are accepted only when they resolve uniquely; 1-based numeric selectors are canonical.
-- Layout lookup is scoped to the effective master for each slide.
-- `Blank` requires an empty title and empty body.
-- `Title Only` allows no body content.
-- `Title Slide` and `Section Header` render slide body text into the subtitle/body placeholder.
-- `Title and Content` supports either text flow, one image, or one table.
-- Missing required placeholders are treated as errors.
-- Duplicate layout names and multiple matching required placeholders are treated as errors.
-- The renderer uses real PowerPoint placeholders rather than synthesized text boxes for title/body content.
-- Linear and radial gradients preserve every declared color stop.
-
-## Unsupported markdown/features
+The intentionally unsupported set includes:
 
 - Setext headings
 - Indented code blocks
@@ -323,27 +221,71 @@ Pipe tables treat the first Markdown row as the table header. The PowerPoint out
 - Layered backgrounds
 - Animations
 
-## Exit codes
+## Automation and image export
 
-- `0`: success
-- `2`: usage or input error
-- `3`: Markdown or front-matter parse error
-- `4`: template or layout error
-- `5`: image or other asset error
-- `6`: unsupported Markdown content
-- `7`: PowerPoint rendering error
-- `8`: unexpected internal error
+### Structured results and overwrite safety
 
-With `--json`, failures are written as structured JSON with a stable error code and relevant input, line, slide, and partial-output context. Successful render JSON includes the default master, retained-master count, masters actually used by generated slides, and exported image paths when PowerPoint image export is enabled.
+Use `--json` for agent and automation workflows:
+
+```powershell
+uvx markdown-pptx deck.md deck.pptx --json
+```
+
+Successful JSON includes the output path, slide count, and template master details. Failures include a stable error code and relevant input, line, slide, or partial-output context.
+
+The CLI refuses to overwrite an existing presentation or colliding generated image. Add `--force` only when replacing generated output is intended:
+
+```powershell
+uvx markdown-pptx deck.md deck.pptx --force --json
+```
+
+### Export slide images on Windows
+
+On Windows, the CLI can use an installed desktop copy of Microsoft PowerPoint to export PNG or JPEG previews after generating the editable presentation:
+
+```powershell
+uvx markdown-pptx deck.md deck.pptx --export-images png --slides 1,3-5 --image-width 1600 --json
+```
+
+Image export requires Windows, an interactive desktop session, and an installed, licensed, initialized PowerPoint application. The default output directory is `<pptx-name>-images`. PNG is recommended for text and diagrams.
+
+The editable `.pptx` is retained if image export fails. With `--json`, the partial output path is reported in `error.details.pptx_output`.
+
+## Reference
+
+Useful discovery and metadata commands:
+
+```powershell
+uvx markdown-pptx --help
+uvx markdown-pptx --syntax
+uvx markdown-pptx --list-color-schemes
+uvx markdown-pptx --list-masters --template theme.pptx
+uvx markdown-pptx --list-layouts --template theme.pptx --master 2
+uvx markdown-pptx --about
+uvx markdown-pptx --version
+```
+
+Exit codes:
+
+| Code | Meaning |
+| ---: | --- |
+| `0` | Success |
+| `2` | Usage or input error |
+| `3` | Markdown or front-matter parse error |
+| `4` | Template or layout error |
+| `5` | Image or other asset error |
+| `6` | Unsupported Markdown content |
+| `7` | PowerPoint rendering error |
+| `8` | Unexpected internal error |
 
 ## Examples
 
-- Sample source deck: `sample/showcase.md`
-- Sample rendered deck: `sample/showcase.pptx`
-- Sample multi-master template: `sample/showcase-template.pptx`
-- Sample local image: `sample/showcase-local.png`
+- [Sample source deck](sample/showcase.md)
+- [Sample rendered deck](sample/showcase.pptx)
+- [Sample multi-master template](sample/showcase-template.pptx)
+- [Sample local image](sample/showcase-local.png)
 
-Regenerate the showcase with the local source and its two-master template:
+Regenerate the showcase from the repository checkout:
 
 ```powershell
 uvx --refresh --from . markdown-pptx sample/showcase.md sample/showcase.pptx --template sample/showcase-template.pptx --force
@@ -351,7 +293,7 @@ uvx --refresh --from . markdown-pptx sample/showcase.md sample/showcase.pptx --t
 
 ## Development
 
-Run tests:
+Install the development environment and run the checks:
 
 ```powershell
 uv sync --locked --all-groups
@@ -360,18 +302,16 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-The real PowerPoint export smoke test is opt-in and requires desktop PowerPoint:
+The real PowerPoint export smoke test is optional and requires desktop PowerPoint:
 
 ```powershell
 $env:MARKDOWN_PPTX_TEST_POWERPOINT="1"
 uv run pytest tests/test_powerpoint_integration.py
 ```
 
-Build distributables:
+Build and validate distributable packages:
 
 ```powershell
 uv build
 uv run twine check dist/*
 ```
-
-CI tests Python 3.11 through 3.14 on Windows and Linux, checks Ruff lint/format, builds both distributions, validates metadata, and smoke-tests the built wheel. PyPI publishing repeats the release gates and verifies that release tags match the package version.
