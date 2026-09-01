@@ -86,6 +86,16 @@ background: "#DEF"
 
 Colors accept short or long hex, RGB, HSL, and PowerPoint theme references such as `var(--accent-1)`.
 
+# Every PowerPoint theme color
+---
+layout: Title Only
+title_color: "var(--light-1)"
+background: "linear-gradient(270deg, var(--dark-1) 0%, var(--dark-1) 20%, var(--light-1) 20%, var(--light-1) 27.273%, var(--dark-2) 27.273%, var(--dark-2) 34.545%, var(--light-2) 34.545%, var(--light-2) 41.818%, var(--accent-1) 41.818%, var(--accent-1) 49.091%, var(--accent-2) 49.091%, var(--accent-2) 56.364%, var(--accent-3) 56.364%, var(--accent-3) 63.636%, var(--accent-4) 63.636%, var(--accent-4) 70.909%, var(--accent-5) 70.909%, var(--accent-5) 78.182%, var(--accent-6) 78.182%, var(--accent-6) 85.455%, var(--hyperlink) 85.455%, var(--hyperlink) 92.727%, var(--followed-hyperlink) 92.727%, var(--followed-hyperlink) 100%)"
+notes: |
+  This slide uses every theme color as a hard band in the background.
+  From top to bottom: Dark 1, Light 1, Dark 2, Light 2, Accent 1 through Accent 6, Hyperlink, and Followed Hyperlink.
+---
+
 # Feature examples
 ---
 layout: Section Header

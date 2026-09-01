@@ -1154,11 +1154,9 @@ def _rewrite_themes(path: Path, deck: Deck, *, theme_part_names: set[str]) -> No
                             parent = clr_scheme.find(f"a:{xml_key}", NS)
                             if parent is None or len(parent) == 0:
                                 continue
-                            child = parent[0]
-                            if child.tag.endswith("sysClr"):
-                                child.set("lastClr", deck.color_scheme.colors[model_key][1:])
-                            else:
-                                child.set("val", deck.color_scheme.colors[model_key][1:])
+                            parent[:] = []
+                            child = ET.SubElement(parent, f"{{{NS['a']}}}srgbClr")
+                            child.set("val", deck.color_scheme.colors[model_key][1:])
                     font_scheme = root.find(".//a:fontScheme", NS)
                     if font_scheme is not None and deck.fonts_override:
                         major = font_scheme.find("a:majorFont/a:latin", NS)

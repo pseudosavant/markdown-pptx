@@ -270,6 +270,10 @@ def test_render_preserves_custom_template_theme_when_markdown_has_no_overrides(t
     clr = theme.find(".//a:clrScheme", NS)
     assert clr is not None
     assert clr.attrib["name"] == "Custom Template Theme"
+    dark1 = clr.find("a:dk1", NS)
+    assert dark1 is not None
+    assert dark1[0].tag == f"{{{NS['a']}}}sysClr"
+    assert dark1[0].attrib == {"val": "windowText", "lastClr": "000000"}
     accent1 = clr.find("a:accent1", NS)
     assert accent1 is not None
     assert accent1[0].attrib["val"] == "ABCDEF"
@@ -921,8 +925,26 @@ Body
     color_scheme = theme.find(".//a:clrScheme", NS)
     assert color_scheme is not None
     assert color_scheme.attrib["name"] == "Custom"
-    assert color_scheme.find("a:accent1", NS)[0].attrib["val"] == "111111"
-    assert color_scheme.find("a:folHlink", NS)[0].attrib["val"] == "888888"
+    expected_colors = {
+        "dk1": "010101",
+        "lt1": "F1F1F1",
+        "dk2": "020202",
+        "lt2": "F2F2F2",
+        "accent1": "111111",
+        "accent2": "222222",
+        "accent3": "333333",
+        "accent4": "444444",
+        "accent5": "555555",
+        "accent6": "666666",
+        "hlink": "777777",
+        "folHlink": "888888",
+    }
+    for xml_key, expected_color in expected_colors.items():
+        parent = color_scheme.find(f"a:{xml_key}", NS)
+        assert parent is not None
+        assert len(parent) == 1
+        assert parent[0].tag == f"{{{NS['a']}}}srgbClr"
+        assert parent[0].attrib == {"val": expected_color}
 
 
 def test_render_rewrites_the_first_masters_actual_theme_part(tmp_path: Path) -> None:
@@ -1105,7 +1127,12 @@ Body
     with zipfile.ZipFile(output) as zf:
         for theme_name in ("ppt/theme/theme1.xml", "ppt/theme/theme7.xml"):
             theme = ET.fromstring(zf.read(theme_name))
-            assert theme.find(".//a:clrScheme", NS).attrib["name"] == "Blue Warm"
+            color_scheme = theme.find(".//a:clrScheme", NS)
+            assert color_scheme.attrib["name"] == "Blue Warm"
+            assert color_scheme.find("a:dk1", NS)[0].tag == f"{{{NS['a']}}}srgbClr"
+            assert color_scheme.find("a:dk1", NS)[0].attrib == {"val": "000000"}
+            assert color_scheme.find("a:lt1", NS)[0].tag == f"{{{NS['a']}}}srgbClr"
+            assert color_scheme.find("a:lt1", NS)[0].attrib == {"val": "FFFFFF"}
             assert theme.find(".//a:majorFont/a:latin", NS).attrib["typeface"] == "Arial"
             assert theme.find(".//a:minorFont/a:latin", NS).attrib["typeface"] == "Arial"
         for master_name in ("ppt/slideMasters/slideMaster1.xml", "ppt/slideMasters/slideMaster2.xml"):
