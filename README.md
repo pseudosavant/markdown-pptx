@@ -2,6 +2,10 @@
 
 `markdown-pptx` turns constrained Markdown into editable PowerPoint `.pptx` presentations built from real PowerPoint layouts and placeholders. It is a strict, predictable CLI designed for both people and coding agents.
 
+## Prerequisite
+
+`markdown-pptx` is designed to be used with [`uv`](https://docs.astral.sh/uv/getting-started/installation/). Install `uv` before continuing. The documented workflows and managed agent skill use `uvx` to run the tool without requiring a global installation.
+
 ## Quick start with an agent
 
 Install the managed agent skill:
