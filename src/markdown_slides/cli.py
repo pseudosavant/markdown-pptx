@@ -22,7 +22,7 @@ from markdown_slides.powerpoint_export import (
     powerpoint_image_export_available,
 )
 from markdown_slides.renderer import list_layout_details, list_master_details, render_pptx
-from markdown_slides.skill import install_skill, remove_skill
+from markdown_slides.skill import install_skill, remove_skill, skill_status, synchronize_skill
 
 PROGRAM_NAME = "markdown-pptx"
 PROJECT_URL = "https://github.com/pseudosavant/markdown-pptx"
@@ -137,8 +137,10 @@ Inspection:
   {PROGRAM_NAME} --list-layouts [--template theme.pptx] [--master MASTER] [--json]
 
 Agent skill:
-  {PROGRAM_NAME} skill install [--skills-dir DIR] [--json]
+  {PROGRAM_NAME} skill install [--skills-dir DIR] [--force] [--json]
   {PROGRAM_NAME} skill remove [--skills-dir DIR] [--force] [--json]
+  {PROGRAM_NAME} skill status [--skills-dir DIR] [--json]
+  Installed managed skills synchronize locally during normal installed CLI runs.
 
 Common options:
   -h, --help                  Show this quick reference.
@@ -180,14 +182,17 @@ def main(
     json_mode = "--json" in args_list
 
     try:
+        if args_list and args_list[0] == "skill":
+            if "-h" in args_list or "--help" in args_list:
+                stdout.write(build_skill_help())
+                return 0
+            return _run_skill_command(args_list[1:], stdout=stdout)
+        synchronize_skill(stderr=stderr)
         if not args_list:
             stdout.write(build_root_help())
             return 0
         if "-h" in args_list or "--help" in args_list:
-            if args_list[0] == "skill":
-                stdout.write(build_skill_help())
-            else:
-                stdout.write(build_root_help())
+            stdout.write(build_root_help())
             return 0
         if "--version" in args_list:
             if args_list != ["--version"]:
@@ -199,9 +204,6 @@ def main(
                 raise UsageError("--about cannot be combined with other arguments.")
             stdout.write(build_about_text())
             return 0
-        if args_list[0] == "skill":
-            return _run_skill_command(args_list[1:], stdout=stdout)
-
         args = build_parser().parse_args(args_list)
         return _run(args, stdin=stdin, stdout=stdout)
     except MarkdownSlidesError as exc:
@@ -223,27 +225,65 @@ def main(
 
 def build_skill_help() -> str:
     return f"""Usage:
-  {PROGRAM_NAME} skill install [--skills-dir DIR] [--json]
+  {PROGRAM_NAME} skill install [--skills-dir DIR] [--force] [--json]
   {PROGRAM_NAME} skill remove [--skills-dir DIR] [--force] [--json]
+  {PROGRAM_NAME} skill status [--skills-dir DIR] [--json]
 
-Install or remove the managed `{PROGRAM_NAME}` agent skill. The default skill root is
-~/.agents/skills. Removal refuses unmanaged content unless --force is supplied.
+Install, inspect, or remove the managed `{PROGRAM_NAME}` agent skill at
+~/.agents/skills/{PROGRAM_NAME}/SKILL.md. Status is read-only.
+
+Normal installed CLI runs synchronize an existing managed skill to the running CLI
+version when it is older and pristine. Newer versions and modified or unverifiable
+files are preserved. Legacy or invalid version metadata receives a fresh replacement.
+Notices go to stderr, including with --json. No package updates or uv cache refreshes
+are performed. Local source and editable development builds skip automatic sync.
+Custom --skills-dir locations require explicit updates. Changes affect future skill
+loading and may not affect instructions already loaded into an agent session.
+
+Install --force restores altered managed content. It never overwrites unmanaged
+content or a newer version. Use: uvx {PROGRAM_NAME} skill install --force
+Removal refuses unmanaged content and extra files unless --force is supplied.
 """
 
 
 def _run_skill_command(args_list: list[str], *, stdout: TextIO) -> int:
     parser = CliArgumentParser(prog=f"{PROGRAM_NAME} skill", add_help=False)
-    parser.add_argument("action", choices=("install", "remove"))
+    parser.add_argument("action", choices=("install", "remove", "status"))
     parser.add_argument("--skills-dir", type=Path)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(args_list)
-    if args.action == "install" and args.force:
-        raise UsageError("--force is valid only with 'skill remove'.")
+    if args.action == "status" and args.force:
+        raise UsageError("--force is valid only with 'skill install' or 'skill remove'.")
     root = args.skills_dir.resolve() if args.skills_dir else None
-    result = install_skill(root) if args.action == "install" else remove_skill(root, force=args.force)
+    if args.action == "install":
+        result = install_skill(root, force=args.force)
+    elif args.action == "remove":
+        result = remove_skill(root, force=args.force)
+    else:
+        result = skill_status(root)
     if args.json:
         stdout.write(json.dumps({"ok": True, "mode": f"skill_{args.action}", **result}, indent=2) + "\n")
+    elif args.action == "status":
+        for key, label in (
+            ("path", "Skill path"),
+            ("standard_location", "Standard location"),
+            ("installed", "Installed"),
+            ("managed", "Managed by markdown-pptx"),
+            ("cli_version", "Running CLI version"),
+            ("managed_version", "Installed managed version"),
+            ("version_relation", "Version relation"),
+            ("integrity", "Integrity"),
+            ("automatic_sync_eligible", "Automatic synchronization eligible"),
+            ("local_development_build", "Automatic synchronization skipped for local development"),
+        ):
+            value = result[key]
+            display = (
+                "yes" if value is True else "no" if value is False else "not applicable" if value is None else value
+            )
+            stdout.write(f"{label}: {display}\n")
+        if result["force_install_command"]:
+            stdout.write(f"To replace managed content: {result['force_install_command']}\n")
     elif args.action == "install":
         if result["created"]:
             verb = "Installed"

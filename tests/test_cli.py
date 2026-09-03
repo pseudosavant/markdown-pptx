@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from markdown_slides import __version__
+from markdown_slides import __version__, skill
 from markdown_slides.assets import default_template_path
 from markdown_slides.cli import _apply_color_ignore_flags, build_parser, build_root_help, main
 from markdown_slides.errors import RenderError
@@ -366,6 +366,161 @@ def test_skill_remove_refuses_unmanaged_directory(tmp_path: Path) -> None:
     assert exit_code == 2
     assert "not marked as managed" in stderr.getvalue()
     assert target.exists()
+
+
+@pytest.fixture
+def installed_older_skill(monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(skill, "is_local_development_build", lambda: False)
+    with monkeypatch.context() as patch:
+        patch.setattr(skill, "__version__", "1.0.0")
+        result = skill.install_skill()
+    return Path(result["path"])
+
+
+@pytest.mark.parametrize(
+    "args", [[], ["--help"], ["-h"], ["--version"], ["--about"], ["--syntax"], ["--list-layouts", "--json"]]
+)
+def test_normal_commands_synchronize_skills(installed_older_skill: Path, args: list[str]) -> None:
+    stdout, stderr = io.StringIO(), io.StringIO()
+    assert main(args, stdout=stdout, stderr=stderr) == 0
+    assert installed_older_skill.read_text(encoding="utf-8") == skill.render_skill()
+    assert "1.0.0 -> " + __version__ in stderr.getvalue()
+    if "--json" in args:
+        assert json.loads(stdout.getvalue())["ok"] is True
+
+
+def test_render_synchronizes_skill(installed_older_skill: Path, tmp_path: Path) -> None:
+    stdout, stderr = io.StringIO(), io.StringIO()
+    output = tmp_path / "deck.pptx"
+    assert (
+        main(
+            ["--input", "-", "--output", str(output), "--base-dir", str(tmp_path), "--json"],
+            stdin=io.StringIO("# Slide\n\nBody\n"),
+            stdout=stdout,
+            stderr=stderr,
+        )
+        == 0
+    )
+    assert output.is_file()
+    assert json.loads(stdout.getvalue())["ok"] is True
+    assert installed_older_skill.read_text(encoding="utf-8") == skill.render_skill()
+    assert "Updated managed skill" in stderr.getvalue()
+
+
+@pytest.mark.parametrize("problem", ["filesystem", "yaml", "utf8", "altered"])
+def test_sync_problem_does_not_break_primary_json(
+    installed_older_skill: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    problem: str,
+) -> None:
+    if problem == "filesystem":
+
+        def fail(*args: object) -> None:
+            raise PermissionError("simulated permission failure")
+
+        monkeypatch.setattr(skill.os, "replace", fail)
+    elif problem == "yaml":
+        installed_older_skill.write_text("---\nmetadata: [\n---\n", encoding="utf-8")
+    elif problem == "utf8":
+        installed_older_skill.write_bytes(b"\xff")
+    else:
+        with installed_older_skill.open("a", encoding="utf-8") as stream:
+            stream.write("User changes\n")
+    before = installed_older_skill.read_bytes()
+    stdout, stderr = io.StringIO(), io.StringIO()
+    assert main(["--syntax", "--json"], stdout=stdout, stderr=stderr) == 0
+    assert json.loads(stdout.getvalue())["ok"] is True
+    assert installed_older_skill.read_bytes() == before
+    assert stderr.getvalue()
+    if problem == "altered":
+        assert skill.FORCE_INSTALL_COMMAND in stderr.getvalue()
+
+
+@pytest.mark.parametrize("args", [["install"], ["remove"], ["status"], ["--help"], ["install", "--help"], []])
+def test_skill_commands_never_synchronize(monkeypatch: pytest.MonkeyPatch, args: list[str]) -> None:
+    def fail(**kwargs: object) -> None:
+        pytest.fail("skill management must not invoke automatic synchronization")
+
+    monkeypatch.setattr("markdown_slides.cli.synchronize_skill", fail)
+    code = main(["skill", *args], stdout=io.StringIO(), stderr=io.StringIO())
+    assert code == (2 if not args else 0)
+
+
+def test_skill_status_json_is_read_only(installed_older_skill: Path) -> None:
+    raw = installed_older_skill.read_bytes()
+    mtime = installed_older_skill.stat().st_mtime_ns
+    stdout, stderr = io.StringIO(), io.StringIO()
+    assert main(["skill", "status", "--json"], stdout=stdout, stderr=stderr) == 0
+    payload = json.loads(stdout.getvalue())
+    assert payload == {
+        "ok": True,
+        "mode": "skill_status",
+        "skill": "markdown-pptx",
+        "path": str(installed_older_skill),
+        "standard_location": True,
+        "installed": True,
+        "managed": True,
+        "cli_version": __version__,
+        "managed_version": "1.0.0",
+        "version_relation": "older",
+        "integrity": "valid",
+        "automatic_sync_eligible": True,
+        "local_development_build": False,
+        "force_install_command": None,
+    }
+    assert installed_older_skill.read_bytes() == raw
+    assert installed_older_skill.stat().st_mtime_ns == mtime
+    assert stderr.getvalue() == ""
+
+
+def test_skill_status_plain_reports_development_and_missing_skill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(skill, "is_local_development_build", lambda: True)
+    custom = tmp_path / "custom"
+    stdout = io.StringIO()
+    assert main(["skill", "status", "--skills-dir", str(custom)], stdout=stdout, stderr=io.StringIO()) == 0
+    text = stdout.getvalue()
+    assert str(custom / "markdown-pptx" / "SKILL.md") in text
+    assert "Installed: no" in text
+    assert "Standard location: no" in text
+    assert "Automatic synchronization eligible: no" in text
+    assert "Automatic synchronization skipped for local development: yes" in text
+    assert not custom.exists()
+
+
+def test_force_install_cli_and_status_recommendation(installed_older_skill: Path) -> None:
+    with installed_older_skill.open("a", encoding="utf-8") as stream:
+        stream.write("User changes\n")
+    stdout = io.StringIO()
+    assert main(["skill", "status"], stdout=stdout, stderr=io.StringIO()) == 0
+    assert "Integrity: altered" in stdout.getvalue()
+    assert skill.FORCE_INSTALL_COMMAND in stdout.getvalue()
+    stdout = io.StringIO()
+    assert main(["skill", "install", "--json"], stdout=stdout, stderr=io.StringIO()) == 2
+    assert json.loads(stdout.getvalue())["error"]["code"] == "usage_error"
+    assert skill.FORCE_INSTALL_COMMAND in json.loads(stdout.getvalue())["error"]["message"]
+    stdout = io.StringIO()
+    assert main(["skill", "install", "--force", "--json"], stdout=stdout, stderr=io.StringIO()) == 0
+    assert json.loads(stdout.getvalue())["updated"] is True
+    assert installed_older_skill.read_text(encoding="utf-8") == skill.render_skill()
+
+
+def test_status_force_is_usage_error() -> None:
+    stdout = io.StringIO()
+    assert main(["skill", "status", "--force", "--json"], stdout=stdout, stderr=io.StringIO()) == 2
+    assert json.loads(stdout.getvalue())["error"]["code"] == "usage_error"
+
+
+def test_skill_help_documents_lifecycle() -> None:
+    stdout = io.StringIO()
+    assert main(["skill", "--help"], stdout=stdout, stderr=io.StringIO()) == 0
+    text = stdout.getvalue()
+    assert "skill install [--skills-dir DIR] [--force] [--json]" in text
+    assert "skill remove [--skills-dir DIR] [--force] [--json]" in text
+    assert "skill status [--skills-dir DIR] [--json]" in text
+    assert skill.FORCE_INSTALL_COMMAND in text
+    assert "editable" in text and "Custom" in text and "stderr" in text
 
 
 def test_missing_input_file_has_stable_json_error(tmp_path: Path) -> None:

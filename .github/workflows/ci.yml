@@ -84,8 +84,8 @@ jobs:
         run: |
           python -m venv .wheel-smoke
           .wheel-smoke/bin/python -m pip install dist/*.whl
-          .wheel-smoke/bin/markdown-pptx --version
-          .wheel-smoke/bin/markdown-pptx --syntax --json
+          .wheel-smoke/bin/python tests/wheel_smoke.py
+          uv run python tests/wheel_smoke.py --expect-local
 
       - name: Upload distributions
         uses: actions/upload-artifact@v7

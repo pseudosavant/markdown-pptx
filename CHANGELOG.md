@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0
+
+- Automatically synchronize an already-installed managed skill during normal installed CLI runs. Use the running version, PEP 440 ordering, content hashes, and atomic replacement to preserve edits and avoid downgrades.
+- Add managed YAML metadata, legacy migration, read-only `skill status`, and `skill install --force`. Preserve `uvx` guidance, custom-directory support, and removal safety.
+- Skip automatic synchronization for local source and editable builds. Keep maintenance local and notices on stderr, with focused lifecycle tests and installed-wheel smoke checks.
+
 ## 1.2.0
 
 - Add optional Windows desktop PowerPoint image export for all or selected slides as PNG/JPEG, with deterministic filenames, aspect-preserving dimensions, isolated automation, transactional staging, structured output/errors, and platform-aware help.

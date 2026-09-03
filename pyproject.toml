@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "markdown-pptx"
-version = "1.2.1"
+version = "1.3.0"
 description = "Convert constrained Markdown slide decks into editable PowerPoint presentations."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,6 +28,7 @@ classifiers = [
 dependencies = [
   "httpx>=0.27",
   "markdown-it-py>=3.0",
+  "packaging>=24.0",
   "Pillow>=10.0",
   "PyYAML>=6.0",
   "python-pptx>=1.0.2",

@@ -20,6 +20,48 @@ Then use `$markdown-pptx` in Codex, Claude Code, or another agent harness that s
 
 The skill teaches the agent how to inspect the format and templates, write valid slide Markdown, render the deck, and handle the result.
 
+## Manage the agent skill
+
+The standard location is `~/.agents/skills/markdown-pptx/SKILL.md`. Normal invocations of an installed CLI, including help and version output, automatically synchronize an already-installed managed skill to the running CLI version. Missing and unmanaged skills are left alone. Skill-management commands skip this automatic check.
+
+Synchronization is local only. It does not query a package index, refresh uv's cache, or update the CLI. The running CLI version is the authority. PEP 440 version comparison prevents downgrades and leaves equal versions unchanged. The skill continues to instruct agents to use `uvx markdown-pptx`.
+
+Each generated `SKILL.md` stores lifecycle data in its YAML `metadata` mapping:
+
+```yaml
+metadata:
+  managed-by: markdown-pptx
+  managed-version: "1.3.0"
+  managed-content-sha256: "sha256:<64 lowercase hexadecimal characters>"
+```
+
+The version above is illustrative. The generated value exactly matches `uvx markdown-pptx --version`. The SHA-256 hash covers the entire UTF-8 file with LF line endings and only the hash value replaced by `""`. Verification preserves the original YAML formatting and normalizes CRLF and CR line endings. This detects modifications. It is not a signature or security boundary. No sidecar files are used.
+
+An older managed skill updates only when its own stored hash verifies. Modified files and valid-version files with missing or malformed hashes are preserved. The legacy HTML managed marker remains recognized. Legacy skills without a version migrate as version 0. Managed skills with missing or invalid version metadata receive a fresh replacement as a recovery step, without hash verification. A conflicting `managed-by` value always prevents replacement.
+
+Inspect the path, ownership, versions, integrity, and automatic synchronization eligibility without changing anything:
+
+```powershell
+uvx markdown-pptx skill status
+uvx markdown-pptx skill status --json
+```
+
+A normal explicit install creates a missing skill or updates a pristine older one. It refuses to overwrite modified or unverifiable managed content with valid version metadata. To restore the bundled skill and discard those edits:
+
+```powershell
+uvx markdown-pptx skill install --force
+```
+
+Install-time `--force` still refuses unmanaged skills and never downgrades a newer version. Removal accepts current and legacy managed skills. Its existing `--force` option also permits removing unmanaged content and extra files in the selected skill directory:
+
+```powershell
+uvx markdown-pptx skill remove
+```
+
+All three commands accept `--skills-dir PATH`. Custom locations require explicit updates because normal CLI invocations inspect only the standard location. Local source checkouts, local direct-source installs, and editable builds do not synchronize automatically. Unidentifiable installation origins are skipped conservatively. An installed wheel remains eligible. Explicit commands such as `uvx --from . markdown-pptx skill install` still work during development.
+
+Automatic replacements are atomic and recheck the installed file before replacement. Maintenance failures do not change the primary command's exit status. Update notices and preservation warnings go to stderr, so documented JSON results on stdout stay valid. Changes affect future agent skill loading and may not change instructions already loaded into a running agent session.
+
 ## What it creates
 
 Markdown stays readable, while the generated presentation remains easy to edit in PowerPoint.
@@ -319,3 +361,5 @@ Build and validate distributable packages:
 uv build
 uv run twine check dist/*
 ```
+
+CI runs `tests/wheel_smoke.py` with an isolated installed wheel. It checks version discovery, generated skill metadata, automatic synchronization, and inspection output. Run `uv run python tests/wheel_smoke.py --expect-local` to check development-build exclusion and explicit installation. Both the smoke checks and pytest use temporary skill directories.

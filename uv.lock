@@ -561,11 +561,12 @@ wheels = [
 
 [[package]]
 name = "markdown-pptx"
-version = "1.2.1"
+version = "1.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "markdown-it-py" },
+    { name = "packaging" },
     { name = "pillow" },
     { name = "python-pptx" },
     { name = "pywin32", marker = "sys_platform == 'win32'" },
@@ -583,6 +584,7 @@ dev = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "markdown-it-py", specifier = ">=3.0" },
+    { name = "packaging", specifier = ">=24.0" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "python-pptx", specifier = ">=1.0.2" },
     { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=311" },

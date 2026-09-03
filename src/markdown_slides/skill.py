@@ -1,21 +1,39 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import os
+import re
 import shutil
+import tempfile
+from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
+from urllib.parse import urlsplit
 
+import yaml
+from packaging.version import InvalidVersion, Version
+from yaml.nodes import MappingNode, Node, ScalarNode
+
+from markdown_slides import __version__
 from markdown_slides.errors import UsageError
 
 SKILL_NAME = "markdown-pptx"
+DISTRIBUTION_NAME = "markdown-pptx"
 MANAGED_MARKER = "<!-- managed-by: markdown-pptx -->"
+FORCE_INSTALL_COMMAND = "uvx markdown-pptx skill install --force"
+_HASH_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
-SKILL_MD = f"""---
+_SKILL_TEMPLATE = f"""---
 name: markdown-pptx
 description: Create editable PowerPoint presentations from strict Markdown using `uvx markdown-pptx`. Use when the user asks an agentic tool to create, render, validate, or inspect a PowerPoint deck expressed as Markdown, or to work with markdown-pptx templates, layouts, colors, notes, images, or syntax.
+metadata:
+  managed-by: {DISTRIBUTION_NAME}
+  managed-version: ""
+  managed-content-sha256: ""
 ---
-
-{MANAGED_MARKER}
 
 # Markdown PPTX
 
@@ -169,18 +187,247 @@ def skill_dir(skills_dir: Path | None = None) -> Path:
     return (skills_dir or default_skills_dir()) / SKILL_NAME
 
 
-def install_skill(skills_dir: Path | None = None) -> dict[str, Any]:
+def _normalize(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _mapping(node: Node) -> dict[str, Node]:
+    if not isinstance(node, MappingNode):
+        raise ValueError("expected a YAML mapping")
+    result: dict[str, Node] = {}
+    for key, value in node.value:
+        if not isinstance(key, ScalarNode) or key.tag != "tag:yaml.org,2002:str" or key.value in result:
+            raise ValueError("ambiguous YAML mapping keys")
+        if value.start_mark.index < key.end_mark.index:
+            raise ValueError("aliased lifecycle metadata is not supported")
+        result[key.value] = value
+    return result
+
+
+def _front_matter(text: str) -> tuple[dict[str, Node], int]:
+    # Node offsets let us replace only a scalar value without reserializing YAML.
+    opening = re.match(r"\A\ufeff?---[ \t]*\n", text)
+    if opening is None:
+        return {}, 0
+    offset = opening.end()
+    end = re.search(r"^---[ \t]*(?:\n|$)", text[offset:], re.MULTILINE)
+    if end is None:
+        raise ValueError("unclosed skill front matter")
+    root = yaml.compose(text[offset : offset + end.start()], Loader=yaml.SafeLoader)
+    if root is None:
+        return {}, offset
+    fields = _mapping(root)
+    return (_mapping(fields["metadata"]) if "metadata" in fields else {}), offset
+
+
+def _string(node: Node | None) -> str | None:
+    if isinstance(node, ScalarNode) and node.tag == "tag:yaml.org,2002:str":
+        return node.value
+    return None
+
+
+def _replace_value(text: str, node: Node, offset: int, value: str) -> str:
+    return text[: offset + node.start_mark.index] + value + text[offset + node.end_mark.index :]
+
+
+def _digest(text: str) -> str:
+    return "sha256:" + hashlib.sha256(_normalize(text).encode("utf-8")).hexdigest()
+
+
+def render_skill() -> str:
+    """Render the single bundled skill with the exact CLI version and its own hash."""
+    text = _normalize(_SKILL_TEMPLATE)
+    fields, offset = _front_matter(text)
+    text = _replace_value(text, fields["managed-version"], offset, json.dumps(__version__))
+    fields, offset = _front_matter(text)
+    return _replace_value(text, fields["managed-content-sha256"], offset, json.dumps(_digest(text)))
+
+
+def _integrity(text: str, fields: dict[str, Node], offset: int) -> str:
+    node = fields.get("managed-content-sha256")
+    if node is None:
+        return "missing"
+    stored = _string(node)
+    if stored is None or not _HASH_PATTERN.fullmatch(stored):
+        return "malformed"
+    # Multiline scalars and aliases are not the canonical hash value representation.
+    source = text[offset + node.start_mark.index : offset + node.end_mark.index]
+    if node.start_mark.line != node.end_mark.line or source not in (stored, f'"{stored}"', f"'{stored}'"):
+        return "malformed"
+    empty = _replace_value(text, node, offset, '""')
+    return "valid" if _digest(empty) == stored else "altered"
+
+
+def _version(value: str | None) -> Version | None:
+    if value is None:
+        return None
+    try:
+        return Version(value)
+    except InvalidVersion:
+        return None
+
+
+@dataclass(frozen=True)
+class _SkillState:
+    raw: bytes | None = None
+    managed: bool = False
+    version: str | None = None
+    integrity: str = "not_applicable"
+
+    def relation(self, running: Version | None) -> str | None:
+        installed = _version("0" if self.integrity == "legacy" else self.version)
+        if installed is None or running is None:
+            return None
+        return "older" if installed < running else "newer" if installed > running else "equal"
+
+    def needs_update(self, running: Version | None) -> bool:
+        return (
+            self.managed
+            and running is not None
+            and (self.version is None or (self.relation(running) == "older" and self.integrity == "valid"))
+        )
+
+
+def _read_skill(skill_path: Path) -> _SkillState:
+    if skill_path.is_symlink() or skill_path.parent.is_symlink():
+        raise UsageError(f"refusing to manage symlinked skill '{skill_path}'.")
+    if skill_path.parent.exists() and not skill_path.parent.is_dir():
+        raise UsageError(f"expected a skill directory at '{skill_path.parent}'.")
+    if skill_path.exists() and not skill_path.is_file():
+        raise UsageError(f"expected a regular skill file at '{skill_path}'.")
+    try:
+        raw = skill_path.read_bytes()
+    except FileNotFoundError:
+        return _SkillState()
+    text = _normalize(raw.decode("utf-8"))
+    try:
+        fields, offset = _front_matter(text)
+    except (ValueError, yaml.YAMLError) as exc:
+        raise UsageError(f"cannot parse skill front matter in '{skill_path}': {exc}") from exc
+    legacy = MANAGED_MARKER in text
+    managed = _string(fields["managed-by"]) == DISTRIBUTION_NAME if "managed-by" in fields else legacy
+    if not managed:
+        return _SkillState(raw=raw)
+    version = _string(fields.get("managed-version"))
+    if _version(version) is None:
+        version = None
+    integrity = _integrity(text, fields, offset)
+    if legacy and "managed-version" not in fields:
+        integrity = "legacy"
+    return _SkillState(raw, True, version, integrity)
+
+
+def is_local_development_build() -> bool:
+    """Fail closed for unknown sources, source checkouts, and PEP 610 directory installs."""
+    try:
+        dist = metadata.distribution(DISTRIBUTION_NAME)
+        module_path = Path(__file__).resolve()
+        # A checkout can shadow a different installed distribution on sys.path.
+        if Path(dist.locate_file("markdown_slides/skill.py")).resolve() != module_path:
+            return True
+        direct_url = dist.read_text("direct_url.json")
+        if direct_url is None:
+            # Older source installs can expose egg-info without PEP 610 metadata.
+            package_root = module_path.parent.parent
+            return (package_root / "pyproject.toml").is_file() or (
+                package_root.name == "src" and (package_root.parent / "pyproject.toml").is_file()
+            )
+        source = json.loads(direct_url)
+        if "dir_info" in source:
+            return True
+        url = urlsplit(source["url"])
+        if url.scheme == "file":
+            # Installing a built wheel is a normal installation, even from a local archive.
+            return not (url.path.lower().endswith(".whl") and isinstance(source.get("archive_info"), dict))
+        return not bool(url.scheme)
+    except (metadata.PackageNotFoundError, OSError, ValueError, KeyError, TypeError):
+        return True
+
+
+def _force_recommendation(skills_dir: Path | None = None) -> str:
+    command = FORCE_INSTALL_COMMAND
+    if skills_dir is not None:
+        command += f' --skills-dir "{skills_dir}"'
+    return command
+
+
+def skill_status(skills_dir: Path | None = None) -> dict[str, Any]:
+    """Inspect skill lifecycle state without creating or changing any files."""
+    path = skill_dir(skills_dir) / "SKILL.md"
+    state = _read_skill(path)
+    local = is_local_development_build()
+    standard = path == skill_dir() / "SKILL.md"
+    running = _version(__version__)
+    unverifiable = (
+        state.managed
+        and state.version is not None
+        and state.integrity != "valid"
+        and state.relation(running) != "newer"
+    )
+    return {
+        "skill": SKILL_NAME,
+        "path": str(path),
+        "standard_location": standard,
+        "installed": state.raw is not None,
+        "managed": state.managed,
+        "cli_version": __version__,
+        "managed_version": state.version,
+        "version_relation": state.relation(running),
+        "integrity": state.integrity,
+        "automatic_sync_eligible": standard and not local and state.needs_update(running),
+        "local_development_build": local,
+        "force_install_command": _force_recommendation(skills_dir) if unverifiable else None,
+    }
+
+
+def _atomic_write(skill_path: Path, text: str, expected: bytes | None) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            dir=skill_path.parent,
+            prefix=".SKILL.",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        # Re-read after staging. A changed, removed, or newer skill cancels this write.
+        if _read_skill(skill_path).raw != expected:
+            raise UsageError(f"skill changed during installation at '{skill_path}'. Retry the command.")
+        os.replace(temporary, skill_path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def install_skill(skills_dir: Path | None = None, *, force: bool = False) -> dict[str, Any]:
     target = skill_dir(skills_dir)
     skill_path = target / "SKILL.md"
-    if target.exists() and not skill_path.exists():
+    state = _read_skill(skill_path)
+    existed = state.raw is not None
+    if target.exists() and not existed:
         raise UsageError(f"refusing to install into '{target}' because it contains no managed SKILL.md.")
-    if skill_path.exists() and MANAGED_MARKER not in skill_path.read_text(encoding="utf-8"):
+    if existed and not state.managed:
         raise UsageError(f"refusing to overwrite unmanaged skill file '{skill_path}'.")
-    target.mkdir(parents=True, exist_ok=True)
-    existed = skill_path.exists()
-    previous = skill_path.read_text(encoding="utf-8") if existed else ""
-    updated = existed and previous != SKILL_MD
-    skill_path.write_text(SKILL_MD, encoding="utf-8", newline="\n")
+    running = _version(__version__)
+    relation = state.relation(running)
+    # Force permits restoring managed edits, but never downgrading a known newer version.
+    if relation != "newer" and state.version is not None and state.integrity != "valid" and not force:
+        raise UsageError(
+            f"refusing to overwrite altered or unverifiable managed skill '{skill_path}'. "
+            f"Use `{_force_recommendation(skills_dir)}` to replace it."
+        )
+    text = render_skill()
+    replace = not existed or state.version is None or (relation != "newer" and (force or relation == "older"))
+    updated = replace and existed and state.raw != text.encode("utf-8")
+    if replace and (not existed or updated):
+        target.mkdir(parents=True, exist_ok=True)
+        _atomic_write(skill_path, text, state.raw)
     return {
         "installed": True,
         "created": not existed,
@@ -188,6 +435,33 @@ def install_skill(skills_dir: Path | None = None) -> dict[str, Any]:
         "skill": SKILL_NAME,
         "path": str(skill_path),
     }
+
+
+def _notice(stderr: TextIO, message: str) -> None:
+    try:
+        stderr.write(message + "\n")
+    except Exception:
+        pass  # Maintenance must not fail the primary command, even with a closed stderr.
+
+
+def synchronize_skill(*, stderr: TextIO) -> None:
+    """Best-effort local maintenance of an already installed standard skill."""
+    try:
+        running = _version(__version__)
+        if running is None or is_local_development_build():
+            return
+        path = skill_dir() / "SKILL.md"
+        state = _read_skill(path)
+        if state.needs_update(running):
+            _atomic_write(path, render_skill(), state.raw)
+            old = state.version or ("0 (legacy)" if state.integrity == "legacy" else "unknown")
+            _notice(stderr, f"Updated managed skill {old} -> {__version__} at {path}")
+        elif state.managed and state.relation(running) == "older" and state.integrity != "valid":
+            _notice(stderr, f"Preserved altered or unverifiable skill at {path}. Use `{FORCE_INSTALL_COMMAND}`.")
+    except Exception as exc:
+        _notice(
+            stderr, f"Skill synchronization skipped: {str(exc).splitlines()[0] if str(exc) else type(exc).__name__}"
+        )
 
 
 def remove_skill(skills_dir: Path | None = None, *, force: bool = False) -> dict[str, Any]:
@@ -202,17 +476,16 @@ def remove_skill(skills_dir: Path | None = None, *, force: bool = False) -> dict
         }
     if not skill_path.exists():
         raise UsageError(f"refusing to remove '{target}' because SKILL.md is missing.")
-    content = skill_path.read_text(encoding="utf-8")
-    if MANAGED_MARKER not in content and not force:
+    if not force and not _read_skill(skill_path).managed:
         raise UsageError(
-            f"refusing to remove '{target}' because it is not marked as managed by markdown-pptx; "
+            f"refusing to remove '{target}' because it is not marked as managed by markdown-pptx. "
             "use --force to override."
         )
     extra_paths = [path for path in target.iterdir() if path.name != "SKILL.md"]
     if extra_paths and not force:
         names = ", ".join(sorted(path.name for path in extra_paths))
         raise UsageError(
-            f"refusing to remove '{target}' because it contains unmanaged entries: {names}; use --force to override."
+            f"refusing to remove '{target}' because it contains unmanaged entries: {names}. Use --force to override."
         )
     shutil.rmtree(target)
     return {"removed": True, "skill": SKILL_NAME, "path": str(target)}
