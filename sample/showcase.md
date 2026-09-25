@@ -39,7 +39,7 @@ It uses real PowerPoint layouts and placeholders, so the output stays easy to ed
 
 An optional document front matter block sets deck-wide defaults such as aspect ratio, fonts, colors, and background behavior.
 
-Each `# H1` starts a new slide, optional slide front matter appears immediately after the H1, and everything until the next H1 becomes that slide's content.
+Each ATX `# H1` or Setext H1 starts a new slide. Optional slide front matter appears immediately after the heading. Everything until the next H1 belongs to that slide.
 
 # Basic CLI usage
 
@@ -136,7 +136,15 @@ layout: Title Only
 
 # Inline text styling
 
-Normal text can mix **strong emphasis**, *italic emphasis*, `inline code`, and [hyperlinks](https://github.com/pseudosavant/markdown-pptx) in the same editable placeholder.
+Normal text can mix **strong with *nested italic***, *italic emphasis*, `inline code`, ~~deleted text~~, H~2~O, x^2^, and [**formatted links**](https://github.com/pseudosavant/markdown-pptx) in the same editable placeholder.
+
+# Line breaks
+
+This source line wraps
+without forcing a visual break.
+
+This line ends here.\
+The next line stays in the same paragraph.
 
 # H2 through H6 headings
 
@@ -149,6 +157,14 @@ Normal text can mix **strong emphasis**, *italic emphasis*, `inline code`, and [
 ##### H5 heading
 
 ###### H6 heading
+
+Setext H2 heading
+-----------------
+
+Setext H1 slide
+===============
+
+An H1 underline can start a slide without an ATX marker.
 
 # Bulleted list
 
@@ -170,6 +186,17 @@ Normal text can mix **strong emphasis**, *italic emphasis*, `inline code`, and [
 1. Write the markdown source
 2. Run the CLI
 3. Open the generated `.pptx`
+
+# Task lists and continuations
+
+- [x] Create the editable deck
+- [ ] Review the slides
+
+1. Begin with a numbered item
+
+   Continue its explanation without another number.
+
+2. Finish the sequence
 
 # Pipe table
 ---
@@ -194,6 +221,10 @@ table:
 
 > markdown-pptx keeps the source format simple enough to read directly while still producing a real presentation.
 
+> - Quoted lists keep their bullets.
+
+>
+
 # Code block
 
 ```powershell
@@ -202,7 +233,7 @@ uvx markdown-pptx sample/showcase.md sample/showcase.pptx --template sample/show
 
 # Local image
 
-![Local markdown-pptx sample image](./showcase-local.png)
+[![Local markdown-pptx sample image](./showcase-local.png "Showcase image")](https://github.com/pseudosavant/markdown-pptx)
 
 # Remote image
 ---

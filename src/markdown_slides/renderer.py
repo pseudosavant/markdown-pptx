@@ -5,8 +5,6 @@ import re
 import shutil
 import tempfile
 import warnings
-import xml.etree.ElementTree as ET
-import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -16,13 +14,14 @@ from PIL import Image as PILImage
 from PIL import UnidentifiedImageError
 from pptx import Presentation
 from pptx.dml.color import RGBColor
+from pptx.enum.dml import MSO_THEME_COLOR
 from pptx.enum.shapes import PP_PLACEHOLDER
-from pptx.enum.text import MSO_AUTO_SIZE
-from pptx.opc.constants import RELATIONSHIP_TYPE as RT
-from pptx.oxml.ns import qn
-from pptx.oxml.xmlchemy import OxmlElement
-from pptx.shapes.base import BaseShape
-from pptx.util import Emu, Pt
+from pptx.enum.text import MSO_AUTO_SIZE, MSO_NUMBERED_BULLET_STYLE, MSO_TEXT_STRIKE_TYPE
+from pptx.util import BulletStyle, Emu, Inches, Pt
+from pygments import lex
+from pygments.lexers import get_lexer_by_name
+from pygments.styles import get_style_by_name
+from pygments.util import ClassNotFound
 
 from markdown_slides.assets import default_template_path
 from markdown_slides.errors import AssetError, MarkdownSlidesError, RenderError, TemplateError
@@ -30,17 +29,15 @@ from markdown_slides.models import (
     Background,
     BodyContent,
     Deck,
+    ImageBlock,
     InlineText,
+    Paragraph,
     Slide,
     TableBlock,
     TableOptions,
     normalize_layout_name,
 )
 
-NS = {
-    "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
-    "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
-}
 TITLE_PLACEHOLDERS = {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}
 SUBTITLE_PLACEHOLDERS = {PP_PLACEHOLDER.SUBTITLE, PP_PLACEHOLDER.BODY}
 BODY_PLACEHOLDERS = {PP_PLACEHOLDER.BODY, PP_PLACEHOLDER.OBJECT}
@@ -51,20 +48,21 @@ DEFAULT_BODY_SPACE_BEFORE_PT = 12
 DEFAULT_BODY_SPACE_AFTER_PT = 6
 MAX_REMOTE_IMAGE_BYTES = 25 * 1024 * 1024
 MAX_IMAGE_PIXELS = 50_000_000
+CODE_STYLE = get_style_by_name("default")
 THEME_COLOR_VAR_RE = re.compile(r"^var\(\s*--(?P<name>[a-z0-9-]+)\s*\)$", re.IGNORECASE)
 THEME_COLOR_SCHEME_MAP = {
-    "dark-1": "dk1",
-    "light-1": "lt1",
-    "dark-2": "dk2",
-    "light-2": "lt2",
-    "accent-1": "accent1",
-    "accent-2": "accent2",
-    "accent-3": "accent3",
-    "accent-4": "accent4",
-    "accent-5": "accent5",
-    "accent-6": "accent6",
-    "hyperlink": "hlink",
-    "followed-hyperlink": "folHlink",
+    "dark-1": MSO_THEME_COLOR.DARK_1,
+    "light-1": MSO_THEME_COLOR.LIGHT_1,
+    "dark-2": MSO_THEME_COLOR.DARK_2,
+    "light-2": MSO_THEME_COLOR.LIGHT_2,
+    "accent-1": MSO_THEME_COLOR.ACCENT_1,
+    "accent-2": MSO_THEME_COLOR.ACCENT_2,
+    "accent-3": MSO_THEME_COLOR.ACCENT_3,
+    "accent-4": MSO_THEME_COLOR.ACCENT_4,
+    "accent-5": MSO_THEME_COLOR.ACCENT_5,
+    "accent-6": MSO_THEME_COLOR.ACCENT_6,
+    "hyperlink": MSO_THEME_COLOR.HYPERLINK,
+    "followed-hyperlink": MSO_THEME_COLOR.FOLLOWED_HYPERLINK,
 }
 
 LAYOUT_PLACEHOLDER_REQUIREMENTS = {
@@ -83,7 +81,6 @@ class MasterCatalogEntry:
     name: str | None
     theme_name: str | None
     display_name: str
-    theme_part_name: str
 
 
 def render_pptx(
@@ -106,12 +103,12 @@ def render_pptx(
     template = template_path or default_template_path()
     preserve_template_paragraph_formatting = template_path is not None
     presentation = _load_presentation(template)
-    _clear_existing_slides(presentation)
+    presentation.slides.clear()
     master_catalog = _build_master_catalog(presentation)
     default_master = _resolve_master(master_catalog, master, context="The --master selection")
     _apply_aspect_ratio(presentation, deck.aspect_ratio)
     template_defaults = {entry.index: _read_template_defaults(entry.master) for entry in master_catalog}
-    theme_part_names = {entry.theme_part_name for entry in master_catalog}
+    _apply_themes(master_catalog, deck)
     owns_downloader = downloader is None
     downloader = downloader or Downloader(enabled=allow_remote_images)
     original_downloader_enabled = downloader.enabled
@@ -153,7 +150,7 @@ def render_pptx(
                     base_dir=base_dir,
                     downloader=downloader,
                 )
-            _render_title(slide, slide_spec, deck)
+            _render_title(slide, slide_spec, deck, template_defaults=template_defaults[selected_master.index])
             _render_body(
                 slide,
                 slide_spec,
@@ -191,11 +188,10 @@ def render_pptx(
     try:
         try:
             presentation.save(str(temp_path))
-            _rewrite_themes(temp_path, deck, theme_part_names=theme_part_names)
             shutil.move(str(temp_path), str(output_path))
         except MarkdownSlidesError:
             raise
-        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        except (OSError, ValueError) as exc:
             raise RenderError(
                 "output_write_error", f"Could not write PowerPoint output '{output_path}': {exc}"
             ) from exc
@@ -349,7 +345,7 @@ def _build_master_catalog(presentation: Presentation) -> list[MasterCatalogEntry
         raise TemplateError("missing_master", "Template does not contain a slide master.")
     catalog: list[MasterCatalogEntry] = []
     for index, slide_master in enumerate(presentation.slide_masters, start=1):
-        theme_part_name, theme_name = _master_theme(slide_master, index=index)
+        theme_name = _master_theme_name(slide_master, index=index)
         name = slide_master.name.strip() or None
         catalog.append(
             MasterCatalogEntry(
@@ -358,23 +354,18 @@ def _build_master_catalog(presentation: Presentation) -> list[MasterCatalogEntry
                 name=name,
                 theme_name=theme_name,
                 display_name=name or theme_name or f"Master {index}",
-                theme_part_name=theme_part_name,
             )
         )
     return catalog
 
 
-def _master_theme(master: object, *, index: int) -> tuple[str, str | None]:
-    for relationship in master.part.rels.values():
-        if relationship.reltype != RT.THEME:
-            continue
-        try:
-            root = ET.fromstring(relationship.target_part.blob)
-        except (ET.ParseError, ValueError) as exc:
-            raise TemplateError("invalid_theme", f"Master {index} references an invalid theme XML part.") from exc
-        theme_name = root.get("name")
-        return str(relationship.target_part.partname).lstrip("/"), theme_name.strip() if theme_name else None
-    raise TemplateError("missing_theme", f"Master {index} does not reference a theme.")
+def _master_theme_name(master: object, *, index: int) -> str | None:
+    try:
+        return master.theme.name.strip() or None
+    except KeyError as exc:
+        raise TemplateError("missing_theme", f"Master {index} does not reference a theme.") from exc
+    except ValueError as exc:
+        raise TemplateError("invalid_theme", f"Master {index} references an invalid theme.") from exc
 
 
 def _resolve_master(
@@ -483,14 +474,6 @@ def _display_remote_url(url: str) -> str:
         return "remote image URL"
 
 
-def _clear_existing_slides(presentation: Presentation) -> None:
-    slide_id_list = presentation.slides._sldIdLst
-    for slide_id in list(slide_id_list):
-        relationship_id = slide_id.rId
-        presentation.part.drop_rel(relationship_id)
-        slide_id_list.remove(slide_id)
-
-
 def _apply_aspect_ratio(presentation: Presentation, aspect_ratio: str) -> None:
     if aspect_ratio == "16:9":
         presentation.slide_width = Emu(12192000)
@@ -500,7 +483,7 @@ def _apply_aspect_ratio(presentation: Presentation, aspect_ratio: str) -> None:
         presentation.slide_height = Emu(6858000)
 
 
-def _render_title(slide, slide_spec: Slide, deck: Deck) -> None:
+def _render_title(slide, slide_spec: Slide, deck: Deck, *, template_defaults: dict[str, float]) -> None:
     if slide_spec.layout == "Blank":
         return
     title_shape = _require_placeholder(slide, TITLE_PLACEHOLDERS, "title")
@@ -508,12 +491,21 @@ def _render_title(slide, slide_spec: Slide, deck: Deck) -> None:
     text_frame.clear()
     text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     paragraph = text_frame.paragraphs[0]
-    run = paragraph.add_run()
-    run.text = slide_spec.title
     title_color = _resolve_text_color(deck, slide_spec, "title")
     if title_color is not None:
         _set_paragraph_default_color(paragraph, title_color)
-        _set_run_color(run, title_color)
+    title_model = Paragraph(kind="title", fragments=slide_spec.title_fragments)
+    for fragment in slide_spec.title_fragments or [InlineText(kind="text", text="")]:
+        _add_fragment_runs(
+            paragraph,
+            fragment,
+            deck,
+            title_model,
+            template_defaults=template_defaults,
+            text_color=title_color,
+        )
+    if not paragraph.runs:
+        paragraph.add_run().text = ""
 
 
 def _render_body(
@@ -560,7 +552,7 @@ def _render_body(
         _render_image(
             slide,
             placeholder,
-            body.images[0].src,
+            body.images[0],
             base_dir=base_dir,
             downloader=downloader,
             contain=True,
@@ -590,14 +582,40 @@ def _render_text_flow(
         paragraph = text_frame.paragraphs[0] if index == 0 else text_frame.add_paragraph()
         paragraph.clear()
         _configure_paragraph_bullets(paragraph, paragraph_model)
+        if paragraph_model.kind == "list_continuation":
+            left, _ = _list_paragraph_indent(paragraph_model)
+            _set_paragraph_indent(
+                paragraph,
+                left=left,
+                hanging=0,
+            )
+        elif paragraph_model.quote_depth and paragraph_model.kind != "list_item":
+            _set_paragraph_indent(
+                paragraph,
+                left=0.3 * paragraph_model.quote_depth + 0.3 * paragraph_model.level,
+                hanging=0,
+            )
         _apply_paragraph_spacing(
             paragraph, paragraph_model, preserve_template_paragraph_formatting=preserve_template_paragraph_formatting
         )
-        if text_color is not None and paragraph_model.kind != "blockquote":
+        if text_color is not None and not paragraph_model.quote_depth:
             _set_paragraph_default_color(paragraph, text_color)
-        if paragraph_model.kind == "blockquote":
+        if paragraph_model.quote_depth:
             paragraph.space_before = Pt(6)
             paragraph.space_after = Pt(6)
+        if paragraph_model.kind == "code":
+            _render_code(paragraph, paragraph_model, deck, template_defaults=template_defaults, text_color=text_color)
+            continue
+        if paragraph_model.task_checked is not None:
+            marker = "☑ " if paragraph_model.task_checked else "☐ "
+            _add_fragment_runs(
+                paragraph,
+                InlineText(kind="text", text=marker),
+                deck,
+                paragraph_model,
+                template_defaults=template_defaults,
+                text_color=text_color,
+            )
         fragments = paragraph_model.fragments or [InlineText(kind="text", text="")]
         for fragment in fragments:
             _add_fragment_runs(
@@ -616,57 +634,149 @@ def _add_fragment_runs(
     *,
     template_defaults: dict[str, float],
     text_color: str | None,
+    styles: frozenset[str] = frozenset(),
+    href: str | None = None,
 ) -> None:
-    if fragment.kind == "link":
-        for child in fragment.children:
-            run = paragraph.add_run()
-            run.text = _flatten_inline([child])
-            run.hyperlink.address = fragment.href
-            _apply_run_font(
-                run, deck, paragraph_model, fragment.kind, template_defaults=template_defaults, text_color=text_color
-            )
+    if fragment.kind == "break":
+        paragraph.add_line_break()
         return
     if fragment.children:
+        child_styles = styles | {fragment.kind}
+        child_href = fragment.href if fragment.kind == "link" else href
         for child in fragment.children:
-            run = paragraph.add_run()
-            run.text = _flatten_inline([child])
-            _apply_run_font(
-                run, deck, paragraph_model, fragment.kind, template_defaults=template_defaults, text_color=text_color
+            _add_fragment_runs(
+                paragraph,
+                child,
+                deck,
+                paragraph_model,
+                template_defaults=template_defaults,
+                text_color=text_color,
+                styles=frozenset(child_styles),
+                href=child_href,
             )
         return
+    if not fragment.text:
+        return
     run = paragraph.add_run()
-    run.text = fragment.text or ""
+    run.text = fragment.text
+    if href:
+        run.hyperlink.address = href
     _apply_run_font(
-        run, deck, paragraph_model, fragment.kind, template_defaults=template_defaults, text_color=text_color
+        run,
+        deck,
+        paragraph_model,
+        styles | {fragment.kind},
+        template_defaults=template_defaults,
+        text_color=text_color,
     )
 
 
 def _apply_run_font(
-    run, deck: Deck, paragraph_model, inline_kind: str, *, template_defaults: dict[str, float], text_color: str | None
+    run,
+    deck: Deck,
+    paragraph_model,
+    styles: frozenset[str] | set[str],
+    *,
+    template_defaults: dict[str, float],
+    text_color: str | None,
 ) -> None:
     if paragraph_model.kind == "heading":
         _set_theme_font(run, major=True)
         base_size = template_defaults["body_font_pt"]
         scale = HEADING_SCALE.get(paragraph_model.heading_level or 6, 1.0)
         run.font.size = Pt(round(base_size * scale))
-    elif paragraph_model.kind == "code" or inline_kind == "code":
+    elif paragraph_model.kind == "code" or "code" in styles:
         run.font.name = "Consolas"
-    else:
+    elif paragraph_model.kind != "title":
         _set_theme_font(run, major=False)
-    if paragraph_model.kind == "heading":
+    if paragraph_model.kind == "heading" or "strong" in styles:
         run.font.bold = True
-    elif paragraph_model.kind == "blockquote":
+    elif paragraph_model.kind != "title":
+        run.font.bold = False
+    if paragraph_model.quote_depth or "emphasis" in styles:
         run.font.italic = True
+    elif paragraph_model.kind != "title":
+        run.font.italic = False
+    if paragraph_model.quote_depth:
         _set_run_color(run, "var(--accent-1)")
-    else:
-        run.font.bold = inline_kind == "strong"
-        run.font.italic = inline_kind == "emphasis"
-    if inline_kind == "strong":
-        run.font.bold = True
-    if inline_kind == "emphasis":
-        run.font.italic = True
-    if text_color is not None and paragraph_model.kind != "blockquote":
+    if "strike" in styles:
+        run.font.strike = MSO_TEXT_STRIKE_TYPE.SINGLE
+    if "superscript" in styles or "subscript" in styles:
+        run.font.baseline = 0.3 if "superscript" in styles else -0.25
+        if paragraph_model.kind == "title":
+            base_size = template_defaults["title_font_pt"]
+        elif paragraph_model.kind == "heading":
+            base_size = template_defaults["body_font_pt"] * HEADING_SCALE.get(paragraph_model.heading_level or 6, 1.0)
+        else:
+            base_size = template_defaults["body_font_pt"]
+        run.font.size = Pt(round(base_size * 0.7))
+    if text_color is not None and not paragraph_model.quote_depth:
         _set_run_color(run, text_color)
+
+
+def _render_code(
+    paragraph, model: Paragraph, deck: Deck, *, template_defaults: dict[str, float], text_color: str | None
+) -> None:
+    code = model.fragments[0].text or "" if model.fragments else ""
+    lexer = None
+    if model.code_language:
+        try:
+            lexer = get_lexer_by_name(model.code_language, stripnl=False, ensurenl=False, tabsize=0)
+        except ClassNotFound:
+            pass
+    tokens = list(lex(code, lexer)) if lexer is not None else []
+    if not tokens or "".join(value for _, value in tokens) != code:
+        _add_code_segment(
+            paragraph,
+            code,
+            deck,
+            model,
+            template_defaults=template_defaults,
+            text_color=text_color,
+        )
+        return
+    for kind, value in tokens:
+        if not value:
+            continue
+        style = CODE_STYLE.style_for_token(kind) if not value.isspace() else None
+        _add_code_segment(
+            paragraph,
+            value,
+            deck,
+            model,
+            template_defaults=template_defaults,
+            text_color=text_color,
+            highlight=style,
+        )
+
+
+def _add_code_segment(
+    paragraph,
+    value: str,
+    deck: Deck,
+    model: Paragraph,
+    *,
+    template_defaults: dict[str, float],
+    text_color: str | None,
+    highlight: dict | None = None,
+) -> None:
+    for index, part in enumerate(value.split("\n")):
+        if index:
+            paragraph.add_line_break()
+        if not part:
+            continue
+        run = paragraph.add_run()
+        run.text = part
+        _apply_run_font(run, deck, model, {"code"}, template_defaults=template_defaults, text_color=text_color)
+        if highlight:
+            if highlight["color"]:
+                run.font.color.rgb = RGBColor.from_string(highlight["color"])
+            if highlight["bold"]:
+                run.font.bold = True
+            if highlight["italic"]:
+                run.font.italic = True
+            if highlight["underline"]:
+                run.font.underline = True
 
 
 def _resolve_text_color(deck: Deck, slide_spec: Slide, kind: str) -> str | None:
@@ -680,34 +790,33 @@ def _resolve_text_color(deck: Deck, slide_spec: Slide, kind: str) -> str | None:
 
 
 def _set_run_color(run, color_value: str) -> None:
-    scheme_name = _theme_scheme_name(color_value)
-    if scheme_name is None:
-        run.font.color.rgb = RGBColor.from_string(color_value[1:])
-        return
-    r_pr = run._r.get_or_add_rPr()
-    for child in list(r_pr):
-        if child.tag == qn("a:solidFill"):
-            r_pr.remove(child)
-    solid_fill = OxmlElement("a:solidFill")
-    _append_color_choice(solid_fill, color_value)
-    r_pr.append(solid_fill)
+    _set_font_color(run.font, color_value)
 
 
 def _set_paragraph_default_color(paragraph, color_value: str) -> None:
-    p_pr = paragraph._p.get_or_add_pPr()
-    def_rpr = p_pr.get_or_add_defRPr()
-    _set_text_character_color(def_rpr, color_value)
-    end_rpr = paragraph._p.get_or_add_endParaRPr()
-    _set_text_character_color(end_rpr, color_value)
+    _set_font_color(paragraph.font, color_value)
+    _set_font_color(paragraph.end_font, color_value)
 
 
-def _set_text_character_color(r_pr, color_value: str) -> None:
-    for child in list(r_pr):
-        if child.tag == qn("a:solidFill"):
-            r_pr.remove(child)
-    solid_fill = OxmlElement("a:solidFill")
-    _append_color_choice(solid_fill, color_value)
-    r_pr.append(solid_fill)
+def _set_font_color(font, color_value: str) -> None:
+    font.fill.background()
+    font.fill.solid()
+    _set_color(font.color, color_value)
+
+
+def _set_color(color, color_value: str) -> None:
+    value = _color_value(color_value)
+    if isinstance(value, RGBColor):
+        color.rgb = value
+    else:
+        color.theme_color = value
+
+
+def _color_value(color_value: str):
+    match = THEME_COLOR_VAR_RE.match(color_value.strip())
+    if match is not None:
+        return THEME_COLOR_SCHEME_MAP[match.group("name").lower()]
+    return RGBColor.from_string(color_value[1:])
 
 
 def _apply_paragraph_spacing(paragraph, paragraph_model, *, preserve_template_paragraph_formatting: bool) -> None:
@@ -728,22 +837,13 @@ def _render_table(slide, placeholder, table: TableBlock, options: TableOptions, 
     shape = slide.shapes.add_table(rows, cols, placeholder.left, placeholder.top, placeholder.width, placeholder.height)
     shape.name = "MarkdownSlidesTable"
     table_shape = shape.table
-    table_properties = table_shape._tbl.tblPr
-    table_style_id = table_properties.find(qn("a:tableStyleId"))
-    if table_style_id is not None:
-        table_style_id.text = TABLE_STYLE_MEDIUM_1_ACCENT_1
-    for attribute, enabled in (
-        ("firstRow", options.header_row),
-        ("lastRow", options.total_row),
-        ("firstCol", options.first_column),
-        ("lastCol", options.last_column),
-        ("bandRow", options.banded_rows),
-        ("bandCol", options.banded_columns),
-    ):
-        if enabled:
-            table_properties.set(attribute, "1")
-        else:
-            table_properties.attrib.pop(attribute, None)
+    table_shape.style_id = TABLE_STYLE_MEDIUM_1_ACCENT_1
+    table_shape.first_row = options.header_row
+    table_shape.last_row = options.total_row
+    table_shape.first_col = options.first_column
+    table_shape.last_col = options.last_column
+    table_shape.horz_banding = options.banded_rows
+    table_shape.vert_banding = options.banded_columns
     for column_index, cell in enumerate(table.headers):
         table_shape.cell(0, column_index).text = _flatten_inline(cell)
     for row_index, row in enumerate(table.rows, start=1):
@@ -757,14 +857,18 @@ def _render_table(slide, placeholder, table: TableBlock, options: TableOptions, 
 
 
 def _render_image(
-    slide, placeholder, src: str, *, base_dir: Path, downloader: Downloader, contain: bool, name: str
+    slide, placeholder, image: ImageBlock, *, base_dir: Path, downloader: Downloader, contain: bool, name: str
 ) -> None:
-    image_source = _resolve_image_source(src, base_dir=base_dir, downloader=downloader)
+    image_source = _resolve_image_source(image.src, base_dir=base_dir, downloader=downloader)
     left, top, width, height = _fit_image(
         image_source, placeholder.left, placeholder.top, placeholder.width, placeholder.height, contain=contain
     )
     picture = slide.shapes.add_picture(image_source, left, top, width, height)
     picture.name = name
+    picture.alt_text = image.alt
+    picture.alt_text_title = image.title
+    if image.href:
+        picture.click_action.hyperlink.address = image.href
 
 
 def _resolve_image_source(src: str, *, base_dir: Path, downloader: Downloader):
@@ -830,7 +934,7 @@ def _render_notes(slide, slide_spec: Slide) -> None:
 
 def _apply_hide_background_graphics(slide, slide_spec: Slide) -> None:
     if slide_spec.hide_background_graphics:
-        slide._element.set("showMasterSp", "0")
+        slide.show_master_shapes = False
 
 
 def _apply_background(
@@ -839,16 +943,8 @@ def _apply_background(
     if background.kind == "none":
         slide.background.fill.background()
         return
-    if background.kind == "color":
-        if _theme_scheme_name(background.value or "") is not None:
-            _apply_background_fill_xml(slide._element, background)
-            return
-        fill = slide.background.fill
-        fill.solid()
-        fill.fore_color.rgb = RGBColor.from_string(background.value[1:])
-        return
-    if background.kind == "gradient":
-        _apply_background_fill_xml(slide._element, background)
+    if background.kind in {"color", "gradient"}:
+        _apply_background_fill(slide.background.fill, background)
         return
     if background.kind == "image":
         image_source = _resolve_image_source(background.url or "", base_dir=base_dir, downloader=downloader)
@@ -862,7 +958,7 @@ def _apply_background(
         )
         picture = slide.shapes.add_picture(image_source, left, top, width, height)
         picture.name = "MarkdownSlidesBackgroundImage"
-        _send_to_back(slide, picture)
+        picture.send_to_back()
         return
     raise RenderError("invalid_background", f"Unsupported background kind '{background.kind}'.")
 
@@ -870,127 +966,27 @@ def _apply_background(
 def _apply_master_background(master, background: Background, *, base_dir: Path, downloader: Downloader) -> None:
     if background.kind == "none":
         master.background.fill.background()
-        return
-    if background.kind == "color":
-        if _theme_scheme_name(background.value or "") is not None:
-            _apply_background_fill_xml(master._element, background)
-            return
-        fill = master.background.fill
-        fill.solid()
-        fill.fore_color.rgb = RGBColor.from_string(background.value[1:])
-        return
-    if background.kind == "gradient":
-        _apply_background_fill_xml(master._element, background)
-        return
-    if background.kind != "image":
+    elif background.kind in {"color", "gradient"}:
+        _apply_background_fill(master.background.fill, background)
+    elif background.kind == "image":
+        source = _resolve_image_source(background.url or "", base_dir=base_dir, downloader=downloader)
+        _fit_image(source, 0, 0, 1, 1, contain=True)
+        master.set_background_picture(source)
+    else:
         raise RenderError("invalid_background", f"Unsupported master background kind '{background.kind}'.")
-    image_source = _resolve_image_source(background.url or "", base_dir=base_dir, downloader=downloader)
-    _fit_image(image_source, 0, 0, 1, 1, contain=True)
-    _image_part, r_id = master.part.get_or_add_image_part(image_source)
-    c_sld = master._element.find(qn("p:cSld"))
-    if c_sld is None:
-        raise RenderError("missing_master", "Slide master content is missing.")
-    existing_bg = c_sld.find(qn("p:bg"))
-    if existing_bg is not None:
-        c_sld.remove(existing_bg)
-    bg = OxmlElement("p:bg")
-    bg_pr = OxmlElement("p:bgPr")
-    blip_fill = OxmlElement("a:blipFill")
-    blip = OxmlElement("a:blip")
-    blip.set(qn("r:embed"), r_id)
-    stretch = OxmlElement("a:stretch")
-    fill_rect = OxmlElement("a:fillRect")
-    stretch.append(fill_rect)
-    blip_fill.append(blip)
-    blip_fill.append(stretch)
-    bg_pr.append(blip_fill)
-    bg_pr.append(OxmlElement("a:effectLst"))
-    bg.append(bg_pr)
-    c_sld.insert(0, bg)
 
 
-def _apply_background_fill_xml(container, background: Background) -> None:
+def _apply_background_fill(fill, background: Background) -> None:
     if background.kind == "color":
-        solid_fill = OxmlElement("a:solidFill")
-        _append_color_choice(solid_fill, background.value or "")
-        _set_background_fill_xml(container, solid_fill)
-        return
-    if background.kind != "gradient":
-        raise RenderError("invalid_background", f"Unsupported XML background kind '{background.kind}'.")
-    grad_fill = OxmlElement("a:gradFill")
-    grad_fill.set("rotWithShape", "1")
-    gs_list = OxmlElement("a:gsLst")
-    for stop in background.stops:
-        gs = OxmlElement("a:gs")
-        gs.set("pos", str(int(stop.position * 100000)))
-        _append_color_choice(gs, stop.color)
-        gs_list.append(gs)
-    grad_fill.append(gs_list)
-    if background.gradient_kind == "radial":
-        path = OxmlElement("a:path")
-        path.set("path", "circle")
-        fill_to_rect = OxmlElement("a:fillToRect")
-        fill_to_rect.set("l", "50000")
-        fill_to_rect.set("t", "50000")
-        fill_to_rect.set("r", "50000")
-        fill_to_rect.set("b", "50000")
-        path.append(fill_to_rect)
-        grad_fill.append(path)
+        fill.background()
+        fill.solid()
+        _set_color(fill.fore_color, background.value or "")
     else:
-        lin = OxmlElement("a:lin")
-        angle = 180.0 if background.angle is None else background.angle
-        lin.set("ang", str(_gradient_angle_to_ooxml(angle)))
-        lin.set("scaled", "0")
-        grad_fill.append(lin)
-    _set_background_fill_xml(container, grad_fill)
-
-
-def _set_background_fill_xml(container, fill_element) -> None:
-    c_sld = container.find(qn("p:cSld"))
-    if c_sld is None:
-        raise RenderError("missing_background", "Slide background container is missing.")
-    existing_bg = c_sld.find(qn("p:bg"))
-    if existing_bg is not None:
-        c_sld.remove(existing_bg)
-    bg = OxmlElement("p:bg")
-    bg_pr = OxmlElement("p:bgPr")
-    bg_pr.append(fill_element)
-    bg_pr.append(OxmlElement("a:effectLst"))
-    bg.append(bg_pr)
-    c_sld.insert(0, bg)
-
-
-def _append_color_choice(parent, color_value: str):
-    scheme_name = _theme_scheme_name(color_value)
-    if scheme_name is not None:
-        color = OxmlElement("a:schemeClr")
-        color.set("val", scheme_name)
-    else:
-        color = OxmlElement("a:srgbClr")
-        color.set("val", color_value[1:])
-    parent.append(color)
-    return color
-
-
-def _theme_scheme_name(color_value: str) -> str | None:
-    if color_value.startswith("scheme:"):
-        return color_value.split(":", 1)[1]
-    match = THEME_COLOR_VAR_RE.match(color_value.strip())
-    if match is None:
-        return None
-    return THEME_COLOR_SCHEME_MAP.get(match.group("name").lower())
-
-
-def _gradient_angle_to_ooxml(angle: float) -> int:
-    normalized = angle % 360.0
-    return int(((360.0 - normalized) % 360.0) * 60000)
-
-
-def _send_to_back(slide, shape: BaseShape) -> None:
-    tree = slide.shapes._spTree
-    element = shape._element
-    tree.remove(element)
-    tree.insert(2, element)
+        fill.set_gradient(
+            [(stop.position, _color_value(stop.color)) for stop in background.stops],
+            angle=180.0 if background.angle is None else background.angle,
+            radial=background.gradient_kind == "radial",
+        )
 
 
 def _require_placeholder(slide, allowed_types: set[PP_PLACEHOLDER], kind: str):
@@ -1018,155 +1014,63 @@ def _flatten_inline(fragments: list[InlineText]) -> str:
 
 
 def _configure_paragraph_bullets(paragraph, paragraph_model) -> None:
-    p_pr = paragraph._p.get_or_add_pPr()
-    _remove_bullet_elements(p_pr)
+    paragraph.bullet = BulletStyle.DEFAULT
     if paragraph_model.kind == "list_item":
         paragraph.level = paragraph_model.level
-        _clear_indent(p_pr)
         if paragraph_model.ordered_index is not None:
-            auto_num = OxmlElement("a:buAutoNum")
-            auto_num.set("type", "arabicPeriod")
-            auto_num.set("startAt", str(paragraph_model.ordered_index))
-            p_pr.insert(0, auto_num)
-        return
-    paragraph.level = 0
-    _set_indent_attrs(p_pr, mar_l=0, indent=0)
-    bu_none = OxmlElement("a:buNone")
-    p_pr.insert(0, bu_none)
+            paragraph.bullet = BulletStyle.numbered(
+                MSO_NUMBERED_BULLET_STYLE.ARABIC_PERIOD, start_at=paragraph_model.ordered_index
+            )
+        elif paragraph_model.task_checked is not None:
+            paragraph.bullet = BulletStyle.NO_BULLET
+        left, hanging = _list_paragraph_indent(paragraph_model)
+        _set_paragraph_indent(paragraph, left=left, hanging=hanging)
+    else:
+        paragraph.level = 0
+        paragraph.left_indent = Emu(0)
+        paragraph.first_line_indent = Emu(0)
+        paragraph.bullet = BulletStyle.NO_BULLET
 
 
-def _remove_bullet_elements(p_pr) -> None:
-    bullet_tags = {
-        qn("a:buNone"),
-        qn("a:buAutoNum"),
-        qn("a:buChar"),
-        qn("a:buBlip"),
-        qn("a:buClr"),
-        qn("a:buClrTx"),
-        qn("a:buFont"),
-        qn("a:buFontTx"),
-        qn("a:buSzPct"),
-        qn("a:buSzPts"),
-        qn("a:buSzTx"),
-    }
-    for child in list(p_pr):
-        if child.tag in bullet_tags:
-            p_pr.remove(child)
-
-
-def _set_indent_attrs(p_pr, *, mar_l: int | None = None, indent: int | None = None) -> None:
-    if mar_l is not None:
-        p_pr.set("marL", str(mar_l))
-    if indent is not None:
-        p_pr.set("indent", str(indent))
-
-
-def _clear_indent(p_pr) -> None:
-    if "marL" in p_pr.attrib:
-        del p_pr.attrib["marL"]
-    if "indent" in p_pr.attrib:
-        del p_pr.attrib["indent"]
+def _list_paragraph_indent(paragraph_model) -> tuple[float, float]:
+    if paragraph_model.task_checked is not None and paragraph_model.ordered_index is None:
+        return 0.3 * paragraph_model.quote_depth + 0.4 * paragraph_model.level, 0
+    bullet_position = 0.3 * paragraph_model.quote_depth + 0.45 * (paragraph_model.level + 1) - 0.22
+    if paragraph_model.ordered_index is not None:
+        digits = len(str(paragraph_model.ordered_index))
+        hanging = 0.4 + 0.16 * (digits - 1)
+        return bullet_position + hanging, hanging
+    return bullet_position + 0.22, 0.22
 
 
 def _set_paragraph_indent(paragraph, *, left: float, hanging: float) -> None:
-    p_pr = paragraph._p.get_or_add_pPr()
-    _set_indent_attrs(
-        p_pr,
-        mar_l=int(left * 914400),
-        indent=int(-hanging * 914400),
-    )
+    paragraph.left_indent = Inches(left)
+    paragraph.first_line_indent = Inches(-hanging)
 
 
 def _set_theme_font(run, *, major: bool) -> None:
-    if run.font.name:
-        run.font.name = None
-    r_pr = run._r.get_or_add_rPr()
-    for child_tag in (qn("a:latin"), qn("a:ea"), qn("a:cs")):
-        for child in list(r_pr):
-            if child.tag == child_tag:
-                r_pr.remove(child)
-    latin = OxmlElement("a:latin")
-    ea = OxmlElement("a:ea")
-    cs = OxmlElement("a:cs")
-    if major:
-        latin.set("typeface", "+mj-lt")
-        ea.set("typeface", "+mj-ea")
-        cs.set("typeface", "+mj-cs")
-    else:
-        latin.set("typeface", "+mn-lt")
-        ea.set("typeface", "+mn-ea")
-        cs.set("typeface", "+mn-cs")
-    r_pr.append(latin)
-    r_pr.append(ea)
-    r_pr.append(cs)
+    run.font.theme_font = "major" if major else "minor"
 
 
 def _read_template_defaults(master) -> dict[str, float]:
-    body_def = master._element.find(".//p:txStyles/p:bodyStyle/a:lvl1pPr/a:defRPr", NS)
-    title_def = master._element.find(".//p:txStyles/p:titleStyle/a:lvl1pPr/a:defRPr", NS)
-    body_pt = _sz_to_pt(body_def.get("sz") if body_def is not None else None, default=28.0)
-    title_pt = _sz_to_pt(title_def.get("sz") if title_def is not None else None, default=44.0)
-    return {"body_font_pt": body_pt, "title_font_pt": title_pt}
+    body = master.text_style_font("body")
+    title = master.text_style_font("title")
+    return {
+        "body_font_pt": body.size.pt if body is not None and body.size is not None else 28.0,
+        "title_font_pt": title.size.pt if title is not None and title.size is not None else 44.0,
+    }
 
 
-def _sz_to_pt(value: str | None, *, default: float) -> float:
-    if value is None:
-        return default
-    try:
-        return int(value) / 100.0
-    except ValueError:
-        return default
-
-
-def _rewrite_themes(path: Path, deck: Deck, *, theme_part_names: set[str]) -> None:
+def _apply_themes(catalog: list[MasterCatalogEntry], deck: Deck) -> None:
     if deck.color_scheme is None and not deck.fonts_override:
         return
-    temp_path = path.with_suffix(".rewritten.pptx")
-    color_map = {
-        "dk1": "dark_1",
-        "lt1": "light_1",
-        "dk2": "dark_2",
-        "lt2": "light_2",
-        "accent1": "accent_1",
-        "accent2": "accent_2",
-        "accent3": "accent_3",
-        "accent4": "accent_4",
-        "accent5": "accent_5",
-        "accent6": "accent_6",
-        "hlink": "hyperlink",
-        "folHlink": "followed_hyperlink",
-    }
-    try:
-        with (
-            zipfile.ZipFile(path, "r") as source,
-            zipfile.ZipFile(temp_path, "w", compression=zipfile.ZIP_DEFLATED) as target,
-        ):
-            for info in source.infolist():
-                data = source.read(info.filename)
-                if info.filename in theme_part_names:
-                    root = ET.fromstring(data)
-                    if deck.color_scheme is not None:
-                        clr_scheme = root.find(".//a:clrScheme", NS)
-                        if clr_scheme is None:
-                            raise RenderError("missing_theme", "The template does not contain a theme color scheme.")
-                        clr_scheme.set("name", deck.color_scheme.name)
-                        for xml_key, model_key in color_map.items():
-                            parent = clr_scheme.find(f"a:{xml_key}", NS)
-                            if parent is None or len(parent) == 0:
-                                continue
-                            parent[:] = []
-                            child = ET.SubElement(parent, f"{{{NS['a']}}}srgbClr")
-                            child.set("val", deck.color_scheme.colors[model_key][1:])
-                    font_scheme = root.find(".//a:fontScheme", NS)
-                    if font_scheme is not None and deck.fonts_override:
-                        major = font_scheme.find("a:majorFont/a:latin", NS)
-                        minor = font_scheme.find("a:minorFont/a:latin", NS)
-                        if major is not None:
-                            major.set("typeface", deck.fonts.headings)
-                        if minor is not None:
-                            minor.set("typeface", deck.fonts.body)
-                    data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
-                target.writestr(info, data)
-        temp_path.replace(path)
-    finally:
-        temp_path.unlink(missing_ok=True)
+    for entry in catalog:
+        theme = entry.master.theme
+        if deck.color_scheme is not None:
+            scheme = theme.color_scheme
+            scheme.name = deck.color_scheme.name
+            for name, theme_color in THEME_COLOR_SCHEME_MAP.items():
+                scheme[theme_color] = RGBColor.from_string(deck.color_scheme.colors[name.replace("-", "_")][1:])
+        if deck.fonts_override:
+            theme.font_scheme.major_latin = deck.fonts.headings
+            theme.font_scheme.minor_latin = deck.fonts.body

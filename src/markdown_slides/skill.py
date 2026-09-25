@@ -56,13 +56,15 @@ Use `--json` when programmatic inspection is more reliable. The renderer retains
 
 ## Create A Deck
 
-Each `# H1` starts exactly one slide. Document front matter is allowed only at the beginning of the file, and slide front matter is allowed only immediately after its H1.
+Each ATX `# H1` or Setext H1 starts exactly one slide. Setext H1 uses a line of `===` below the title. Document front matter is allowed only at the beginning of the file, and slide front matter is allowed only immediately after its H1 heading.
 
 ```text
 uvx markdown-pptx deck.md deck.pptx --json
 ```
 
 If no output path is supplied, the tool writes a `.pptx` beside the Markdown input. Prefer an explicit output path for agent workflows so the result is easy to report.
+
+Soft line breaks become spaces. Use two trailing spaces or a trailing backslash for a visible line break within a paragraph. Task list markers become static checkboxes. Fenced code can use a language label for editable syntax coloring. Image descriptions, optional titles, and links around standalone images are preserved.
 
 ## Use Templates Carefully
 

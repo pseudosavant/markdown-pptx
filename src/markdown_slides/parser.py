@@ -9,7 +9,7 @@ import yaml
 
 from markdown_slides.assets import load_color_schemes
 from markdown_slides.errors import ParseError, UnsupportedContentError
-from markdown_slides.markdown_body import parse_body_markdown
+from markdown_slides.markdown_body import MD, _html_text, parse_body_markdown, parse_inline_children
 from markdown_slides.models import (
     Background,
     BodyContent,
@@ -17,6 +17,7 @@ from markdown_slides.models import (
     Deck,
     Fonts,
     GradientStop,
+    InlineText,
     Slide,
     TableOptions,
     TextColors,
@@ -73,8 +74,8 @@ URL_RE = re.compile(r"^url\((?P<value>.+)\)$", re.IGNORECASE)
 LINEAR_RE = re.compile(r"^linear-gradient\((?P<args>.+)\)$", re.IGNORECASE)
 RADIAL_RE = re.compile(r"^radial-gradient\((?P<args>.+)\)$", re.IGNORECASE)
 THEME_VAR_RE = re.compile(r"^var\(\s*--(?P<name>[a-z0-9-]+)\s*\)$", re.IGNORECASE)
-SETEXT_RE = re.compile(r"^\s*(=+|-+)\s*$")
-ATX_H1_RE = re.compile(r"^#(?:\s+(.*)|\s*)$")
+SETEXT_H1_RE = re.compile(r"^[ ]{0,3}=+[ \t]*$")
+ATX_H1_RE = re.compile(r"^[ ]{0,3}#(?:[ \t]+.*|[ \t]*)$")
 FENCE_OPEN_RE = re.compile(r"^[ ]{0,3}(?P<marker>`{3,}|~{3,})(?P<info>.*)$")
 THEME_COLOR_VARS = {
     "dark-1": "dark_1",
@@ -95,7 +96,9 @@ THEME_COLOR_VARS = {
 @dataclass(slots=True)
 class RawSlide:
     title: str
+    title_fragments: list[InlineText]
     line_number: int
+    body_line_number: int
     config: dict[str, object]
     body_markdown: str
 
@@ -174,14 +177,16 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
             line=raw_slide.line_number,
         )
         slide_text_colors = _parse_text_colors(raw_slide.config, line=raw_slide.line_number)
-        _reject_setext(
-            raw_slide.body_markdown.splitlines(), base_line=raw_slide.line_number + 1, source_name=source_name
+        _reject_misplaced_slide_front_matter(
+            raw_slide.body_markdown.splitlines(),
+            base_line=raw_slide.body_line_number,
+            source_name=source_name,
         )
         body = parse_body_markdown(
             raw_slide.body_markdown,
             source_name=source_name,
             slide_index=slide_index,
-            base_line=raw_slide.line_number + 1,
+            base_line=raw_slide.body_line_number,
         )
         if normalized_layout is None:
             if raw_slide.title == "" and body.is_empty:
@@ -217,6 +222,7 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
                 body_markdown=raw_slide.body_markdown,
                 body=body,
                 line_number=raw_slide.line_number,
+                title_fragments=raw_slide.title_fragments,
             )
         )
 
@@ -318,57 +324,131 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
 
     slides: list[RawSlide] = []
     current_title: str | None = None
+    current_title_fragments: list[InlineText] = []
     current_line: int | None = None
+    current_body_line: int | None = None
     current_config: dict[str, object] = {}
     current_body: list[str] = []
     fence: FenceState | None = None
 
     while index < len(lines):
         line = lines[index]
-        stripped = line.strip()
         was_in_fence = fence is not None
         fence = _next_fence_state(line, fence)
-        match = ATX_H1_RE.match(line) if not was_in_fence and fence is None else None
-        if match:
+        atx = (
+            bool(ATX_H1_RE.match(line)) and _top_level_h1_start([*current_body, line]) == len(current_body)
+            if not was_in_fence and fence is None
+            else False
+        )
+        setext_start: int | None = None
+        if (
+            not atx
+            and not was_in_fence
+            and fence is None
+            and index + 1 < len(lines)
+            and SETEXT_H1_RE.match(lines[index + 1])
+        ):
+            candidate = [*current_body, line, lines[index + 1]]
+            setext_start = _top_level_h1_start(candidate)
+        if atx or setext_start is not None:
+            if atx:
+                title_source = line
+                title_line = index + 1
+                prefix = current_body
+            else:
+                assert setext_start is not None
+                candidate = [*current_body, line, lines[index + 1]]
+                title_source = "\n".join(candidate[setext_start:])
+                title_line = index - (len(current_body) - setext_start) + 1
+                prefix = current_body[:setext_start]
+            title, title_fragments = _heading_payload(title_source)
             if current_title is not None:
                 slides.append(
                     RawSlide(
                         title=current_title,
+                        title_fragments=current_title_fragments,
                         line_number=current_line or 1,
+                        body_line_number=current_body_line or 1,
                         config=current_config,
-                        body_markdown="\n".join(current_body).rstrip(),
+                        body_markdown="\n".join(prefix).rstrip(),
                     )
                 )
-            current_title = (match.group(1) or "").strip()
-            current_line = index + 1
-            current_config = {}
-            current_body = []
-            index += 1
-            if index < len(lines) and lines[index].strip() == "---":
-                current_config, index = _parse_yaml_front_matter(lines, index, SLIDE_KEYS, source_name=source_name)
-            continue
-        if current_title is None:
-            if stripped:
+            elif _html_text("\n".join(prefix)):
+                first = next(i for i, part in enumerate(prefix) if part.strip())
                 raise ParseError(
                     "content_before_first_slide",
-                    "Content is not allowed before the first '# H1' slide.",
-                    line=index + 1,
+                    "Content is not allowed before the first H1 slide.",
+                    line=first + 1,
                     input_path=source_name,
                 )
-        else:
-            current_body.append(line)
+            current_title = title
+            current_title_fragments = title_fragments
+            current_line = title_line
+            current_config = {}
+            current_body = []
+            index += 1 if atx else 2
+            if index < len(lines) and lines[index].strip() == "---":
+                current_config, index = _parse_yaml_front_matter(lines, index, SLIDE_KEYS, source_name=source_name)
+            current_body_line = index + 1
+            continue
+        current_body.append(line)
         index += 1
 
     if current_title is not None:
         slides.append(
             RawSlide(
                 title=current_title,
+                title_fragments=current_title_fragments,
                 line_number=current_line or 1,
+                body_line_number=current_body_line or 1,
                 config=current_config,
                 body_markdown="\n".join(current_body).rstrip(),
             )
         )
+    elif _html_text("\n".join(current_body)):
+        first = next(i for i, part in enumerate(current_body) if part.strip())
+        raise ParseError(
+            "content_before_first_slide",
+            "Content is not allowed before the first H1 slide.",
+            line=first + 1,
+            input_path=source_name,
+        )
     return document_config, slides
+
+
+def _top_level_h1_start(lines: list[str]) -> int | None:
+    tokens = MD.parse("\n".join(lines))
+    if len(tokens) < 3:
+        return None
+    heading = tokens[-3]
+    if (
+        heading.type == "heading_open"
+        and heading.tag == "h1"
+        and heading.level == 0
+        and heading.map is not None
+        and heading.map[1] == len(lines)
+    ):
+        return heading.map[0]
+    return None
+
+
+def _heading_payload(source: str) -> tuple[str, list[InlineText]]:
+    tokens = MD.parse(source)
+    inline = next(token for token in tokens if token.type == "inline")
+    fragments = parse_inline_children(inline.children or [])
+    return _plain_inline(fragments).strip(), fragments
+
+
+def _plain_inline(fragments: list[InlineText]) -> str:
+    parts: list[str] = []
+    for fragment in fragments:
+        if fragment.kind == "break":
+            parts.append(" ")
+        elif fragment.children:
+            parts.append(_plain_inline(fragment.children))
+        else:
+            parts.append(fragment.text or "")
+    return "".join(parts)
 
 
 def _parse_yaml_front_matter(
@@ -614,19 +694,20 @@ def _strip_quotes(value: str) -> str:
     return value
 
 
-def _reject_setext(lines: list[str], *, base_line: int, source_name: str) -> None:
+def _reject_misplaced_slide_front_matter(lines: list[str], *, base_line: int, source_name: str) -> None:
     fence: FenceState | None = None
-    for index in range(len(lines) - 1):
-        current = lines[index]
-        next_line = lines[index + 1]
+    for index, line in enumerate(lines[:-1]):
         was_in_fence = fence is not None
-        fence = _next_fence_state(current, fence)
-        if was_in_fence or fence is not None:
+        fence = _next_fence_state(line, fence)
+        if was_in_fence or fence is not None or line.strip() != "---":
             continue
-        if current.strip() and SETEXT_RE.match(next_line):
+        if index and lines[index - 1].strip():
+            continue
+        next_line = lines[index + 1].strip()
+        if any(next_line.startswith(f"{key}:") for key in SLIDE_KEYS):
             raise ParseError(
-                "setext_headings_unsupported",
-                "Setext headings are not supported; use '#', '##', etc.",
+                "slide_front_matter_placement",
+                "Slide front matter must immediately follow its H1 heading.",
                 line=base_line + index,
                 input_path=source_name,
             )
