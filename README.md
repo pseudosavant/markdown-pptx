@@ -2,6 +2,8 @@
 
 `markdown-pptx` turns constrained Markdown into editable PowerPoint `.pptx` presentations built from real PowerPoint layouts and placeholders. It is a strict, predictable CLI designed for both people and coding agents.
 
+PowerPoint generation uses the [ps-python-pptx fork](https://github.com/pseudosavant/python-pptx). The converter uses public library APIs only. See the [API boundary](docs/public-api-capabilities.md) for the capability mapping.
+
 ## Prerequisite
 
 `markdown-pptx` is designed to be used with [`uv`](https://docs.astral.sh/uv/getting-started/installation/). Install `uv` before continuing. The documented workflows and managed agent skill use `uvx` to run the tool without requiring a global installation.
@@ -96,8 +98,8 @@ The examples below continue to use `uvx markdown-pptx` so they work without a gl
 The document model has four core rules:
 
 1. Optional document front matter may appear only at the beginning of the file.
-2. Each `# H1` starts exactly one slide.
-3. Optional slide front matter may appear only immediately after its H1.
+2. Each ATX `# H1` or Setext H1 starts exactly one slide.
+3. Optional slide front matter may appear only immediately after its H1 heading.
 4. Everything until the next H1 belongs to that slide.
 
 A minimal two-slide deck looks like this:
@@ -247,22 +249,28 @@ The built-in template provides these common layouts. Supplied templates may use 
 Supported Markdown includes:
 
 - Paragraphs
-- Bullet and ordered lists, nested up to three levels
-- `##` through `######` headings within a slide
-- Emphasis, strong text, inline code, and links
-- Fenced code blocks
-- Blockquotes
+- Bullet and ordered lists, nested up to three levels, with continuation paragraphs and empty items
+- Task lists with static checked and unchecked boxes
+- ATX or Setext H1 slide headings and H2 through H6 headings within a slide
+- Emphasis, strong text, strikethrough, superscript, subscript, inline code, and links
+- Hard line breaks from two trailing spaces or a trailing backslash
+- Fenced code blocks with editable syntax coloring for recognized languages
+- Plain indented code blocks
+- Blockquotes with nested text, headings, lists, and code
 - Pipe tables
-- Local and remote images
+- Local and remote standalone images, including linked images
+
+Soft line breaks become spaces so ordinary source wrapping does not force a line break on the slide. Use a hard line break when the visual line must end. A Setext heading uses `===` for H1 or `---` for H2 on the next line. Setext has no H3 through H6 form. Slide front matter must still immediately follow the slide heading.
+
+Inline formatting stays editable in PowerPoint, including formatting nested inside links. Task boxes are static symbols. Fenced code uses the first language label for syntax coloring when Pygments recognizes it. Unknown labels produce plain editable code. Image alt text and optional titles are stored in the picture metadata. A link around a standalone image makes the picture clickable.
+
+HTML comments and tags are ignored. Text between tags stays visible as plain text. Script and style content is omitted.
 
 The intentionally unsupported set includes:
 
-- Setext headings
-- Indented code blocks
-- Horizontal rules
-- Raw HTML
-- Task lists
+- Thematic breaks such as `***` and `---`
 - Footnotes
+- Images mixed into text paragraphs
 - Arbitrary positioning
 - Layered backgrounds
 - Animations

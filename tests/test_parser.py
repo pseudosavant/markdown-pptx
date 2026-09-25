@@ -115,18 +115,40 @@ def test_slide_front_matter_must_be_immediately_after_h1() -> None:
             source_name="deck.md",
         )
 
-    assert excinfo.value.context.code == "setext_headings_unsupported"
+    assert excinfo.value.context.code == "slide_front_matter_placement"
 
 
-def test_setext_headings_are_rejected() -> None:
-    with pytest.raises(ParseError) as excinfo:
-        parse_deck(
-            "# Slide\n\nSubtitle\n--------\n",
-            input_path=Path("deck.md"),
-            source_name="deck.md",
-        )
+def test_setext_h1_starts_slides_and_setext_h2_stays_in_body() -> None:
+    deck = parse_deck(
+        "First **title**\n=============\n\nSubtitle\n--------\n\nSecond title\n============\n",
+        input_path=Path("deck.md"),
+        source_name="deck.md",
+    )
+    assert [slide.title for slide in deck.slides] == ["First title", "Second title"]
+    assert deck.slides[0].body.paragraphs[0].heading_level == 2
+    assert deck.slides[0].title_fragments[1].kind == "strong"
 
-    assert excinfo.value.context.code == "setext_headings_unsupported"
+
+def test_setext_h1_with_front_matter_keeps_body_error_line() -> None:
+    source = "Title\n=====\n---\nlayout: Title and Content\n---\n\nInline ![alt](image.png) image.\n"
+    with pytest.raises(UnsupportedContentError) as excinfo:
+        parse_deck(source, input_path=None, source_name="deck.md")
+    assert excinfo.value.context.line == 7
+
+
+def test_atx_title_closing_marks_indentation_and_inline_formatting() -> None:
+    deck = parse_deck("  # **Bold** *Title* ###\n", input_path=None, source_name="deck.md")
+    assert deck.slides[0].title == "Bold Title"
+    assert [fragment.kind for fragment in deck.slides[0].title_fragments if fragment.children] == [
+        "strong",
+        "emphasis",
+    ]
+
+
+def test_h1_inside_html_comment_does_not_start_slide() -> None:
+    deck = parse_deck("# Slide\n\n<!--\n# ignored\n-->\n\nText\n", input_path=None, source_name="deck.md")
+    assert len(deck.slides) == 1
+    assert deck.slides[0].body.paragraphs[0].fragments[0].text == "Text"
 
 
 def test_blank_slide_defaults_when_empty_title_and_body() -> None:
@@ -203,9 +225,8 @@ def test_shorter_backtick_run_does_not_close_longer_fence() -> None:
 @pytest.mark.parametrize(
     "body",
     [
-        "Text with <span>raw HTML</span>.",
-        "- [ ] unfinished task",
         "A footnote reference[^1].\n\n[^1]: Footnote text.",
+        "Inline ![alt](image.png) image.",
     ],
 )
 def test_unrepresentable_markdown_is_rejected(body: str) -> None:
@@ -227,6 +248,53 @@ def test_footnote_syntax_inside_inline_code_is_allowed() -> None:
     )
 
     assert deck.slides[0].body.paragraphs[0].fragments[0].kind == "code"
+
+
+def test_breaks_lists_quotes_and_inline_extensions_preserve_structure() -> None:
+    deck = parse_deck(
+        "# Slide\n\nsoft\nwrap and hard  \nbreak\n\n1. First\n\n   More first\n\n2.\n"
+        "\n> - Quoted\n\n>\n\nH~2~O x^2^ ~~old~~ **bold *italic***\n",
+        input_path=None,
+        source_name="deck.md",
+    )
+    paragraphs = deck.slides[0].body.paragraphs
+    assert [fragment.kind for fragment in paragraphs[0].fragments] == [
+        "text",
+        "text",
+        "text",
+        "break",
+        "text",
+    ]
+    assert [paragraph.kind for paragraph in paragraphs[1:4]] == [
+        "list_item",
+        "list_continuation",
+        "list_item",
+    ]
+    assert [paragraph.ordered_index for paragraph in paragraphs[1:4]] == [1, 1, 2]
+    assert paragraphs[3].fragments == []
+    assert paragraphs[4].kind == "list_item" and paragraphs[4].quote_depth == 1
+    assert paragraphs[5].kind == "blockquote" and paragraphs[5].quote_depth == 1
+    assert [fragment.kind for fragment in paragraphs[6].fragments if fragment.children] == [
+        "subscript",
+        "superscript",
+        "strike",
+        "strong",
+    ]
+
+
+def test_empty_bullet_tasks_html_and_linked_image() -> None:
+    deck = parse_deck(
+        "# Text\n\n- one\n-\n- [ ] open\n- [x] done\n\nBefore<!-- note --><b>after</b>\n"
+        '\n# Picture\n\n[![**Chart**](chart.png "Revenue")](https://example.com)\n',
+        input_path=None,
+        source_name="deck.md",
+    )
+    paragraphs = deck.slides[0].body.paragraphs
+    assert paragraphs[1].kind == "list_item" and paragraphs[1].fragments == []
+    assert [paragraph.task_checked for paragraph in paragraphs[2:4]] == [False, True]
+    assert [fragment.text for fragment in paragraphs[4].fragments] == ["Before", "after"]
+    image = deck.slides[1].body.images[0]
+    assert (image.alt, image.title, image.href) == ("Chart", "Revenue", "https://example.com")
 
 
 def test_hide_background_graphics_requires_a_boolean() -> None:

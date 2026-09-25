@@ -126,6 +126,12 @@ def test_syntax_json_output() -> None:
     }
     assert payload["aspect_ratio_values"] == ["16:9", "4:3"]
     assert payload["layout_values"] == ["Title Slide", "Title and Content", "Section Header", "Title Only", "Blank"]
+    assert "atx_or_setext_h1_slide_boundaries" in payload["supported_markdown"]
+    assert "hard_line_breaks" in payload["supported_markdown"]
+    assert "task_lists_with_static_checkboxes" in payload["supported_markdown"]
+    assert "fenced_code_syntax_coloring" in payload["supported_markdown"]
+    assert "standalone_linked_images" in payload["supported_markdown"]
+    assert "horizontal_rules" in payload["unsupported_markdown"]
     assert payload["theme_color_syntax"] == (
         "Use var(--slot-name) in text colors and backgrounds, for example var(--accent-1) or var(--dark-1)."
     )
@@ -537,7 +543,7 @@ def test_missing_input_file_has_stable_json_error(tmp_path: Path) -> None:
 
 def test_unsupported_markdown_has_stable_exit_code(tmp_path: Path) -> None:
     deck = tmp_path / "unsupported.md"
-    deck.write_text("# Slide\n\n<span>raw HTML</span>\n", encoding="utf-8")
+    deck.write_text("# Slide\n\nInline ![alt](image.png) image.\n", encoding="utf-8")
     stdout = io.StringIO()
     stderr = io.StringIO()
 

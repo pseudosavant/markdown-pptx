@@ -21,7 +21,10 @@ from markdown_slides.renderer import Downloader, list_layout_details, list_maste
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
 )
-NS = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+NS = {
+    "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+    "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+}
 TABLE_STYLE_MEDIUM_1_ACCENT_1 = "{B301B821-A1FF-4177-AEE7-76D212191A09}"
 
 
@@ -385,6 +388,107 @@ def test_render_lists_and_headings_have_expected_bullet_xml(tmp_path: Path) -> N
     assert "<a:buNone/>" in slide_xml
     assert "arabicPeriod" in slide_xml
     assert "• Bullet" not in slide_xml
+
+
+def test_render_title_breaks_and_nested_inline_styles(tmp_path: Path) -> None:
+    deck = parse_deck(
+        "# **Bold** *Title* ###\n\nsoft\nwrap and hard  \nbreak\n\n"
+        "**bold *both*** and [**linked `code`**](https://example.com) "
+        "H~2~O x^2^ ~~old~~\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    slide = Presentation(str(output)).slides[0]
+    title = next(shape for shape in slide.shapes if shape.name.startswith("Title"))
+    assert title.text == "Bold Title"
+    assert title.text_frame.paragraphs[0].runs[0].font.bold is True
+    assert any(run.text == "Title" and run.font.italic is True for run in title.text_frame.paragraphs[0].runs)
+    body = next(shape for shape in slide.shapes if shape.name.startswith("Content"))
+    paragraphs = body.text_frame.paragraphs
+    assert paragraphs[0].text == "soft wrap and hard\vbreak"
+    assert any(run.text == "both" and run.font.bold and run.font.italic for run in paragraphs[1].runs)
+    assert any(run.text == "code" and run.font.name == "Consolas" for run in paragraphs[1].runs)
+    assert any(run.text == "linked " and run.hyperlink.address == "https://example.com" for run in paragraphs[1].runs)
+    with zipfile.ZipFile(output) as archive:
+        root = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+    assert root.find(".//a:br", NS) is not None
+    assert root.find('.//a:rPr[@strike="sngStrike"]', NS) is not None
+    assert root.find('.//a:rPr[@baseline="30000"]', NS) is not None
+    assert root.find('.//a:rPr[@baseline="-25000"]', NS) is not None
+
+
+def test_render_list_continuations_empty_items_tasks_and_quoted_lists(tmp_path: Path) -> None:
+    deck = parse_deck(
+        "# Lists\n\n1. First\n\n   Continued\n\n2.\n\n- one\n-\n- [ ] Open\n- [x] Done\n\n> - Quoted\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    slide = Presentation(str(output)).slides[0]
+    body = next(shape for shape in slide.shapes if shape.name.startswith("Content"))
+    paragraphs = body.text_frame.paragraphs
+    assert [paragraph.text for paragraph in paragraphs] == [
+        "First",
+        "Continued",
+        "",
+        "one",
+        "",
+        "☐ Open",
+        "☑ Done",
+        "Quoted",
+    ]
+    xml_paragraphs = body.element.findall(".//a:p", NS)
+    assert xml_paragraphs[0].find("./a:pPr/a:buAutoNum", NS) is not None
+    assert xml_paragraphs[1].find("./a:pPr/a:buNone", NS) is not None
+    first_indent = xml_paragraphs[0].find("./a:pPr", NS)
+    continuation_indent = xml_paragraphs[1].find("./a:pPr", NS)
+    assert first_indent is not None and continuation_indent is not None
+    assert first_indent.get("marL") == continuation_indent.get("marL")
+    assert int(first_indent.get("indent", "0")) < 0
+    assert continuation_indent.get("indent") == "0"
+    assert xml_paragraphs[2].find("./a:pPr/a:buAutoNum", NS) is not None
+    assert xml_paragraphs[5].find("./a:pPr/a:buNone", NS) is not None
+    assert xml_paragraphs[7].find("./a:pPr/a:buNone", NS) is None
+
+
+def test_render_fenced_code_highlighting_keeps_editable_text(tmp_path: Path) -> None:
+    deck = parse_deck(
+        "# Code\n\n```python\ndef greet(name):\n\n\treturn name\n```\n\n"
+        "# Unknown\n\n```unknown-language\nplain text\n```\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    slides = Presentation(str(output)).slides
+    code = next(shape for shape in slides[0].shapes if shape.name.startswith("Content"))
+    paragraph = code.text_frame.paragraphs[0]
+    assert paragraph.text == "def greet(name):\v\v\treturn name"
+    assert any(run.text == "def" and run.font.color.type is not None for run in paragraph.runs)
+    plain = next(shape for shape in slides[1].shapes if shape.name.startswith("Content"))
+    assert plain.text_frame.paragraphs[0].text == "plain text"
+
+
+def test_render_linked_image_description_and_title(tmp_path: Path) -> None:
+    (tmp_path / "chart.png").write_bytes(PNG_BYTES)
+    deck = parse_deck(
+        '# Picture\n\n[![**Quarterly chart**](chart.png "Revenue")](https://example.com)\n',
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    picture = next(shape for shape in Presentation(str(output)).slides[0].shapes if shape.name == "MarkdownSlidesImage")
+    assert picture.click_action.hyperlink.address == "https://example.com"
+    with zipfile.ZipFile(output) as archive:
+        root = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+    properties = root.find(".//p:pic/p:nvPicPr/p:cNvPr", NS)
+    assert properties is not None
+    assert properties.attrib["descr"] == "Quarterly chart"
+    assert properties.attrib["title"] == "Revenue"
 
 
 def test_render_document_background_image_targets_slide_master(tmp_path: Path) -> None:
@@ -959,6 +1063,8 @@ def test_render_rewrites_the_first_masters_actual_theme_part(tmp_path: Path) -> 
             if info.filename == "ppt/theme/theme1.xml":
                 target.writestr("ppt/theme/theme7.xml", data)
                 continue
+            if info.filename == "[Content_Types].xml":
+                data = data.replace(b"/ppt/theme/theme1.xml", b"/ppt/theme/theme7.xml")
             if info.filename == "ppt/slideMasters/_rels/slideMaster1.xml.rels":
                 xml = ET.fromstring(data)
                 theme_rel = next(

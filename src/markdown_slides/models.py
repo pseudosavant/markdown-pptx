@@ -38,12 +38,17 @@ class Paragraph:
     level: int = 0
     ordered_index: int | None = None
     heading_level: int | None = None
+    quote_depth: int = 0
+    task_checked: bool | None = None
+    code_language: str | None = None
 
 
 @dataclass(slots=True)
 class ImageBlock:
     src: str
     alt: str
+    title: str | None = None
+    href: str | None = None
 
 
 @dataclass(slots=True)
@@ -129,6 +134,7 @@ class Slide:
     body_markdown: str
     body: BodyContent
     line_number: int
+    title_fragments: list[InlineText] = field(default_factory=list)
 
 
 @dataclass(slots=True)
