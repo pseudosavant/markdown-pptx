@@ -50,9 +50,9 @@ class _Cursor:
     index: int = 0
 
 
-def parse_body_markdown(text: str, *, source_name: str, slide_index: int, base_line: int) -> BodyContent:
-    if not text.strip():
-        return BodyContent()
+def parse_body_regions(
+    text: str, *, two_content: bool, source_name: str, slide_index: int, base_line: int
+) -> list[BodyContent]:
     tokens = MD.parse(text)
     _validate_supported_tokens(
         tokens,
@@ -60,10 +60,37 @@ def parse_body_markdown(text: str, *, source_name: str, slide_index: int, base_l
         slide_index=slide_index,
         base_line=base_line,
     )
-    cursor = _Cursor(tokens=tokens)
-    content = BodyContent()
-    _parse_block_sequence(cursor, content, source_name=source_name, slide_index=slide_index, base_line=base_line)
-    return content
+    separators = []
+    for index, token in enumerate(tokens):
+        if token.type != "hr":
+            continue
+        if not two_content or token.level != 0:
+            raise _unsupported_token_error(
+                token,
+                "Horizontal rules require layout: Two Content and must appear at the top level of the slide body.",
+                source_name,
+                slide_index,
+                base_line,
+            )
+        separators.append(index)
+    if two_content and len(separators) != 1:
+        token = tokens[separators[1]] if len(separators) > 1 else Token("hr", "hr", 0)
+        raise _unsupported_token_error(
+            token,
+            "Two Content slides require exactly one top-level horizontal rule separating the two content areas.",
+            source_name,
+            slide_index,
+            base_line,
+        )
+    groups = [tokens] if not separators else [tokens[: separators[0]], tokens[separators[0] + 1 :]]
+    regions = []
+    for group in groups:
+        content = BodyContent()
+        _parse_block_sequence(
+            _Cursor(tokens=group), content, source_name=source_name, slide_index=slide_index, base_line=base_line
+        )
+        regions.append(content)
+    return regions
 
 
 def _validate_supported_tokens(

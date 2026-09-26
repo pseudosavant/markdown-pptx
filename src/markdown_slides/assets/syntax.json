@@ -3,7 +3,7 @@
   "slide_front_matter_keys": ["master", "layout", "background", "title_color", "body_color", "hide_background_graphics", "notes", "table"],
   "master_selector_syntax": "Use a positive 1-based master index, or an exact unique slide-master/theme name reported by --list-masters.",
   "table_options": {
-    "scope": "Slide-level options that require exactly one pipe table in the slide body.",
+    "scope": "Slide-level options applied to every table on the slide. Require at least one pipe table.",
     "defaults": {
       "header_row": true,
       "total_row": false,
@@ -14,7 +14,8 @@
     }
   },
   "aspect_ratio_values": ["16:9", "4:3"],
-  "layout_values": ["Title Slide", "Title and Content", "Section Header", "Title Only", "Blank"],
+  "layout_values": ["Title Slide", "Title and Content", "Two Content", "Section Header", "Title Only", "Blank"],
+  "two_content_syntax": "Explicit layout: Two Content requires exactly one top-level thematic break. Content before it goes left and content after it goes right. Prefer *** surrounded by blank lines. --- and ___ also work when parsed as thematic breaks. Either area can be empty, text flow, one image, or one table. Require exactly two non-overlapping body/content placeholders arranged left to right. Nested breaks and additional breaks are rejected.",
   "theme_color_syntax": "Use var(--slot-name) in text colors and backgrounds, for example var(--accent-1) or var(--dark-1).",
   "color_scheme_syntax": {
     "preset_example": {
@@ -37,6 +38,7 @@
   },
   "supported_markdown": [
     "paragraphs",
+    "horizontal_rule_as_two_content_separator",
     "bullet_lists",
     "ordered_lists",
     "nested_lists_up_to_3_levels",
@@ -65,7 +67,7 @@
     "image_alt_text_and_titles"
   ],
   "unsupported_markdown": [
-    "horizontal_rules",
+    "horizontal_rules_outside_two_content_separator",
     "footnotes",
     "inline_images_in_text_flow",
     "layered_backgrounds",

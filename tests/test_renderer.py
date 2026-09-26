@@ -769,7 +769,7 @@ def test_layout_details_report_unsupported_layouts() -> None:
     title_content = next(item for item in details["layouts"] if item["name"] == "Title and Content")
     assert title_content["compatible"] is True
     two_content = next(item for item in details["layouts"] if item["name"] == "Two Content")
-    assert two_content["compatible"] is False
+    assert two_content["compatible"] is True
 
 
 def test_ambiguous_placeholder_template_fails(tmp_path: Path) -> None:

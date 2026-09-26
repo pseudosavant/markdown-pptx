@@ -68,6 +68,7 @@ THEME_COLOR_SCHEME_MAP = {
 LAYOUT_PLACEHOLDER_REQUIREMENTS = {
     "Title Slide": ((TITLE_PLACEHOLDERS, "title"), (SUBTITLE_PLACEHOLDERS, "subtitle")),
     "Title and Content": ((TITLE_PLACEHOLDERS, "title"), (BODY_PLACEHOLDERS, "body")),
+    "Two Content": ((TITLE_PLACEHOLDERS, "title"),),
     "Section Header": ((TITLE_PLACEHOLDERS, "title"), (SUBTITLE_PLACEHOLDERS, "subtitle")),
     "Title Only": ((TITLE_PLACEHOLDERS, "title"),),
     "Blank": (),
@@ -461,6 +462,11 @@ def _layout_compatibility(layout) -> tuple[bool, str | None]:
             return False, f"missing required {kind} placeholder"
         if count > 1:
             return False, f"contains multiple matching {kind} placeholders"
+    if normalized == "Two Content":
+        try:
+            _two_content_placeholders(layout)
+        except TemplateError as exc:
+            return False, exc.context.message
     return True, None
 
 
@@ -522,6 +528,22 @@ def _render_body(
     body_color = _resolve_text_color(deck, slide_spec, "body")
     if body_color is None and slide_spec.layout in {"Title Slide", "Section Header"}:
         body_color = "var(--dark-1)"
+    if slide_spec.layout == "Two Content":
+        placeholders = _two_content_placeholders(slide)
+        for placeholder, region in zip(placeholders, slide_spec.content_regions, strict=True):
+            _render_content_area(
+                slide,
+                placeholder,
+                region,
+                slide_spec,
+                deck,
+                template_defaults=template_defaults,
+                text_color=body_color,
+                preserve_template_paragraph_formatting=preserve_template_paragraph_formatting,
+                base_dir=base_dir,
+                downloader=downloader,
+            )
+        return
     if slide_spec.layout in {"Blank", "Title Only"} or body.is_empty:
         return
     if slide_spec.layout in {"Title Slide", "Section Header"}:
@@ -538,13 +560,41 @@ def _render_body(
     if slide_spec.layout != "Title and Content":
         raise TemplateError("unsupported_layout", f"Layout '{slide_spec.layout}' is not renderable.")
     placeholder = _require_placeholder(slide, BODY_PLACEHOLDERS, "body")
+    _render_content_area(
+        slide,
+        placeholder,
+        body,
+        slide_spec,
+        deck,
+        template_defaults=template_defaults,
+        text_color=body_color,
+        preserve_template_paragraph_formatting=preserve_template_paragraph_formatting,
+        base_dir=base_dir,
+        downloader=downloader,
+    )
+
+
+def _render_content_area(
+    slide,
+    placeholder,
+    body: BodyContent,
+    slide_spec: Slide,
+    deck: Deck,
+    *,
+    template_defaults: dict[str, float],
+    text_color: str | None,
+    preserve_template_paragraph_formatting: bool,
+    base_dir: Path,
+    downloader: Downloader,
+) -> None:
+    placeholder.text_frame.clear()
     if body.paragraphs:
         _render_text_flow(
             placeholder,
             body,
             deck,
             template_defaults=template_defaults,
-            text_color=body_color,
+            text_color=text_color,
             preserve_template_paragraph_formatting=preserve_template_paragraph_formatting,
         )
         return
@@ -1001,6 +1051,23 @@ def _require_placeholder(slide, allowed_types: set[PP_PLACEHOLDER], kind: str):
             f"Selected layout contains more than one matching {kind} placeholder.",
         )
     return matches[0]
+
+
+def _two_content_placeholders(slide):
+    matches = [shape for shape in slide.placeholders if shape.placeholder_format.type in BODY_PLACEHOLDERS]
+    if len(matches) != 2:
+        raise TemplateError(
+            "invalid_content_placeholders",
+            f"Two Content requires exactly two body/content placeholders. Found {len(matches)}.",
+        )
+    if any(shape.left is None or shape.width is None or shape.width <= 0 for shape in matches):
+        raise TemplateError("invalid_content_placeholders", "Two Content placeholders need valid horizontal bounds.")
+    matches.sort(key=lambda shape: shape.left)
+    if matches[0].left + matches[0].width > matches[1].left:
+        raise TemplateError(
+            "invalid_content_placeholders", "Two Content placeholders must be side by side without horizontal overlap."
+        )
+    return matches
 
 
 def _flatten_inline(fragments: list[InlineText]) -> str:

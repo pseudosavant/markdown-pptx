@@ -1,0 +1,68 @@
+[
+  {
+    "id": "metadata",
+    "description": "Document defaults and slide overrides, including fonts, theme colors, master selection, and speaker notes.",
+    "requirements": "Packaged default template. For a custom template, inspect --list-masters and --list-layouts --json first. Master selectors also accept exact unique master/theme names.",
+    "markdown": "---\naspect_ratio: \"16:9\"\nfonts:\n  body: Aptos\n  headings: Aptos Display\ncolor_scheme:\n  preset: Office\n  accent_1: \"#1D6FA8\"\nbackground: \"var(--light-1)\"\ntitle_color: \"var(--dark-1)\"\nbody_color: \"var(--dark-2)\"\n---\n\n# Project update\n---\nmaster: 1\nlayout: Title Slide\nbackground: \"var(--accent-1)\"\ntitle_color: \"#FFFFFF\"\nbody_color: \"#FFFFFF\"\nhide_background_graphics: true\nnotes: |\n  Introduce the project.\n  Explain the next milestone.\n---\n\nSeptember review\n\n# Current status\n\n- Document colors apply here.\n- Omit fonts and colors to preserve a supplied template's theme.\n"
+  },
+  {
+    "id": "two-content",
+    "description": "Exactly one top-level thematic break divides a Two Content slide into left and right content. Each side can contain text, one table, or one image. Either side can be empty.",
+    "requirements": "A Two Content layout with exactly two non-overlapping content placeholders arranged left to right. The default template includes one. Prefer *** with blank lines. --- and ___ also work when parsed as thematic breaks. A Setext underline is a heading, and YAML belongs immediately after H1. Nested or additional thematic breaks are rejected.",
+    "markdown": "# Options\n---\nlayout: Two Content\nnotes: Compare the two approaches.\n---\n\n## Option A\n\n- Small initial scope\n- Quick feedback\n\n***\n\n## Option B\n\n- Broader initial scope\n- More preparation\n\n# Summary and figures\n---\nlayout: Two Content\ntable:\n  first_column: true\n---\n\n## Progress\n\n- [x] Design agreed\n- [ ] Delivery scheduled\n\n***\n\n| Milestone | Status |\n| --- | --- |\n| Design | Complete |\n| Delivery | Planned |\n\n# Space for discussion\n---\nlayout: Two Content\n---\n\n***\n\nAdd your observations here.\n"
+  },
+  {
+    "id": "layouts",
+    "description": "All supported layout names and empty-title syntax. H1 starts slides. A thematic break only separates content within Two Content.",
+    "requirements": "Packaged default template. Layout names must exist on the selected master. Title Slide and Section Header accept text only. Title Only has no body. Blank has neither title nor body.",
+    "markdown": "# Welcome\n---\nlayout: Title Slide\n---\n\nA short subtitle\n\n# Agenda\n---\nlayout: Title and Content\n---\n\n- Context\n- Decision\n\n# Compare\n---\nlayout: Two Content\n---\n\nFirst approach\n\n***\n\nSecond approach\n\n# Next section\n---\nlayout: Section Header\n---\n\nA short introduction\n\n# Discussion\n---\nlayout: Title Only\n---\n\n#\n---\nlayout: Blank\n---\n"
+  },
+  {
+    "id": "inline",
+    "description": "Nested emphasis, links, strikethrough, superscript, subscript, escaped punctuation, soft and hard breaks, and ignored inline HTML.",
+    "requirements": "No external assets. Two trailing spaces or a trailing backslash create a hard break. Ordinary source newlines become spaces. HTML tags are ignored and inline text is retained. Comments are ignored.",
+    "markdown": "# **Editable** formatting ###\n\nUse *emphasis*, **strong**, ***both***, ~~removed~~, `inline code`, H~2~O, and x^2^.\n\nVisit [**project** *details*](https://example.com). Escape punctuation: \\*literal asterisks\\*.\n\nThis source line\ncontinues in the same paragraph.\n\nFirst visible line  \nSecond visible line\\\nThird visible line\n\n<span>Plain text remains.</span> <!-- This comment disappears. -->\n"
+  },
+  {
+    "id": "headings",
+    "description": "ATX H1 and Setext H1 slide boundaries, Setext H2, and body headings H2 through H6.",
+    "requirements": "No external assets. --- immediately under paragraph text is a Setext H2 underline. Use a blank line before a thematic break.",
+    "markdown": "Setext slide title\n==================\n\nSetext body heading\n-------------------\n\nA brief introduction.\n\n# ATX slide title\n\n## Level two\n### Level three\n#### Level four\n##### Level five\n###### Level six\n"
+  },
+  {
+    "id": "lists",
+    "description": "Bullet and ordered lists with three nesting levels, continuation paragraphs, empty items, and static task checkboxes.",
+    "requirements": "No external assets. Indent continuation paragraphs within their item. Checkboxes are static symbols in PowerPoint.",
+    "markdown": "# List structure\n\n- Parent item\n  - Child item\n    - Third level\n\n  Continuation paragraph under the parent.\n\n-\n- Another item\n\n# Ordered work\n\n3. Review\n4. Deliver\n\n- [x] Research complete\n- [ ] Implementation pending\n"
+  },
+  {
+    "id": "quotes-code",
+    "description": "Rich, nested, and empty blockquotes, plus fenced and indented editable code with language-aware coloring.",
+    "requirements": "No external assets. Recognized fence language labels enable Pygments coloring. Unknown labels produce plain code. *** inside a fence remains literal code.",
+    "markdown": "# Quoted context\n\n> A **formatted** quotation with a [source](https://example.com).\n>\n> Another paragraph.\n>\n> > Nested quotation.\n\n>\n\n# Python example\n\n```python\ndef greet(name):\n    return f\"Hello, {name}\"\n```\n\n# Literal source\n\n```text\n***\n# This is code, not a slide boundary.\n```\n\n    Indented code also stays editable.\n"
+  },
+  {
+    "id": "tables",
+    "description": "Pipe tables and every native table style flag. Slide table metadata applies to all tables on that slide and requires at least one table.",
+    "requirements": "No external assets. One table per content area. Style flags do not calculate totals. Pipe alignment markers are accepted but do not override PowerPoint alignment.",
+    "markdown": "# Regional revenue\n---\ntable:\n  header_row: true\n  total_row: true\n  first_column: true\n  last_column: false\n  banded_rows: true\n  banded_columns: false\n---\n\n| Region | Revenue |\n| --- | ---: |\n| **North** | $50,000 |\n| South | $40,000 |\n| Total | $90,000 |\n\n# Regional comparison\n---\nlayout: Two Content\ntable:\n  header_row: false\n  total_row: false\n  first_column: false\n  last_column: true\n  banded_rows: false\n  banded_columns: true\n---\n\n| Region | Revenue |\n| --- | --- |\n| North | $50,000 |\n\n***\n\n| Region | Revenue |\n| --- | --- |\n| South | $40,000 |\n"
+  },
+  {
+    "id": "images",
+    "description": "Local and remote standalone images, picture alt text and optional titles, and a link around an image. Two Content allows a caption or explanation beside an image.",
+    "requirements": "Supply photo.png beside the Markdown file. Replace the example.com URL with a reachable image URL. Relative paths resolve from the Markdown directory, or --base-dir for stdin. --no-remote-images rejects remote images. Images fit within their content area while preserving aspect ratio.",
+    "markdown": "# Local image\n\n![A descriptive alternative](photo.png \"Optional picture title\")\n\n# Linked image and context\n---\nlayout: Two Content\n---\n\n[![A descriptive alternative](photo.png \"Open project details\")](https://example.com/project)\n\n***\n\n## Project context\n\nThe image on the left opens the project page.\n\n# Remote image\n\n![A descriptive alternative](https://example.com/photo.png \"Remote picture\")\n"
+  },
+  {
+    "id": "backgrounds",
+    "description": "Solid colors, theme variables, linear and radial gradients, and local or remote image backgrounds. Demonstrates 4:3 slides and CSS-like color formats.",
+    "requirements": "Supply photo.png beside the Markdown file and replace the example.com image URL. Image backgrounds fill the slide and may crop. Only one background is allowed per scope. Slide backgrounds override document backgrounds.",
+    "markdown": "---\naspect_ratio: \"4:3\"\nbackground: \"#FFFFFF\"\n---\n\n# Solid background\n---\nbackground: \"rgb(240, 245, 250)\"\ntitle_color: \"hsl(210, 60%, 25%)\"\n---\n\nA simple backdrop.\n\n# Linear gradient\n---\nbackground: \"linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)\"\ntitle_color: \"#FFF\"\nbody_color: \"#FFF\"\n---\n\nTheme-aware gradient stops.\n\n# Radial gradient\n---\nbackground: \"radial-gradient(#FFFFFF 0%, #D9EAF7 100%)\"\n---\n\nA radial background.\n\n# Local photo background\n---\nlayout: Title Only\nbackground: \"url(photo.png)\"\n---\n\n# Remote photo background\n---\nlayout: Title Only\nbackground: \"url(https://example.com/photo.png)\"\n---\n"
+  },
+  {
+    "id": "custom-palette",
+    "description": "A complete custom theme palette using preset: null and all 12 PowerPoint color slots.",
+    "requirements": "No external assets. Use --list-color-schemes to discover preset alternatives. Omit fonts and colors to inherit a supplied template. Color-ignore flags leave image backgrounds intact.",
+    "markdown": "---\ncolor_scheme:\n  preset: null\n  dark_1: \"#10263F\"\n  light_1: \"#FFFFFF\"\n  dark_2: \"#30475E\"\n  light_2: \"#F0F5FA\"\n  accent_1: \"#1D6FA8\"\n  accent_2: \"#2F8F83\"\n  accent_3: \"#C98424\"\n  accent_4: \"#8759A6\"\n  accent_5: \"#BE5266\"\n  accent_6: \"#67813D\"\n  hyperlink: \"#0066CC\"\n  followed_hyperlink: \"#704080\"\nbackground: \"var(--light-1)\"\ntitle_color: \"var(--accent-1)\"\nbody_color: \"var(--dark-1)\"\n---\n\n# Our palette\n\nTheme-aware content follows the selected colors.\n"
+  }
+]

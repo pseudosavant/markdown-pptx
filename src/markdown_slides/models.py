@@ -7,6 +7,7 @@ CANONICAL_LAYOUTS = {
     "title-slide": "Title Slide",
     "titleandcontent": "Title and Content",
     "title-and-content": "Title and Content",
+    "twocontent": "Two Content",
     "section-header": "Section Header",
     "title-only": "Title Only",
     "blank": "Blank",
@@ -135,6 +136,11 @@ class Slide:
     body: BodyContent
     line_number: int
     title_fragments: list[InlineText] = field(default_factory=list)
+    secondary_body: BodyContent | None = None
+
+    @property
+    def content_regions(self) -> list[BodyContent]:
+        return [self.body] if self.secondary_body is None else [self.body, self.secondary_body]
 
 
 @dataclass(slots=True)
