@@ -242,6 +242,7 @@ def summarize(tasks: list[str]) -> str:
     count = len(tasks)
     return f"Completed {count} tasks"
 
+
 tasks = ["Design", "Build", "Review"]
 if len(tasks) >= 3:
     print(summarize(tasks))
