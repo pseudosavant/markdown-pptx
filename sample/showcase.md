@@ -242,6 +242,7 @@ def summarize(tasks: list[str]) -> str:
     count = len(tasks)
     return f"Completed {count} tasks"
 
+
 tasks = ["Design", "Build", "Review"]
 if len(tasks) >= 3:
     print(summarize(tasks))
@@ -404,6 +405,84 @@ table:
 | --- | --- |
 | Design | Complete |
 | Delivery | Planned |
+
+# Theme syntax: dark colors
+---
+code_highlighting: theme-dark
+background: "#FFFFFF"
+notes: Dark 1 supplies ordinary code. Accents 1, 2, and 3 supply keywords, values, and named tokens. Brightness is adjusted only as needed for 4.5 to 1 contrast.
+---
+
+`code_highlighting: theme-dark` on a white background.
+
+```python
+# Colors follow this deck's blue theme
+def greet(name: str, count: int = 3):
+    for index in range(count):
+        print(f"Hello, {name}: {index}")
+
+
+greet("PowerPoint")
+```
+
+# Theme syntax: light colors
+---
+code_highlighting: theme-light
+background: "#10263F"
+title_color: "#FFFFFF"
+body_color: "#FFFFFF"
+notes: Light 1 supplies ordinary code. The same accent slots are used with lighter variants where needed. Comments meet the same contrast target as other code.
+---
+
+`code_highlighting: theme-light` on a navy background.
+
+```typescript
+// Editable theme colors on a dark slide
+interface Greeting { message: string }
+const greet = (name: string): Greeting => ({
+  message: `Hello, ${name}`
+});
+
+console.log(greet("PowerPoint"));
+```
+
+# Theme syntax: a light gradient
+---
+code_highlighting: theme-dark
+background: "linear-gradient(0deg, #FFFFFF 0%, #D8EBFF 100%)"
+notes: A 16 by 16 grid estimates the background range beneath the content placeholder. HTML tags use Accent 1, values use Accent 2, and attributes use Accent 3.
+---
+
+The background range guides the brightness adjustments.
+
+```html
+<!-- Theme colors stay editable -->
+<article class="greeting">
+  <h2>Hello, PowerPoint</h2>
+  <p data-state="ready">Ready to present.</p>
+</article>
+```
+
+# Theme syntax: a dark gradient
+---
+code_highlighting: theme-light
+background: "radial-gradient(circle, #254D70 0%, #102030 100%)"
+title_color: "#FFFFFF"
+body_color: "#FFFFFF"
+notes: A dark radial gradient demonstrates the light variant. Native theme references retain their slot and use brightness adjustments for the estimated background range.
+---
+
+One palette is reused across all code blocks in this area.
+
+```css
+/* Presentation colors follow the theme */
+.greeting {
+  color: #1d6fa8;
+  padding: 24px;
+  display: grid;
+  gap: 12px;
+}
+```
 
 # Markdown in. Editable PowerPoint out.
 ---

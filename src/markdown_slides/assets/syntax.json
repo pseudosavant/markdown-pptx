@@ -1,6 +1,24 @@
 {
-  "document_front_matter_keys": ["aspect_ratio", "fonts", "color_scheme", "background", "title_color", "body_color"],
-  "slide_front_matter_keys": ["master", "layout", "background", "title_color", "body_color", "hide_background_graphics", "notes", "table"],
+  "document_front_matter_keys": [
+    "aspect_ratio",
+    "fonts",
+    "color_scheme",
+    "background",
+    "title_color",
+    "body_color",
+    "code_highlighting"
+  ],
+  "slide_front_matter_keys": [
+    "master",
+    "layout",
+    "background",
+    "title_color",
+    "body_color",
+    "hide_background_graphics",
+    "notes",
+    "table",
+    "code_highlighting"
+  ],
   "master_selector_syntax": "Use a positive 1-based master index, or an exact unique slide-master/theme name reported by --list-masters.",
   "table_options": {
     "scope": "Slide-level options applied to every table on the slide. Require at least one pipe table.",
@@ -13,8 +31,18 @@
       "banded_columns": false
     }
   },
-  "aspect_ratio_values": ["16:9", "4:3"],
-  "layout_values": ["Title Slide", "Title and Content", "Two Content", "Section Header", "Title Only", "Blank"],
+  "aspect_ratio_values": [
+    "16:9",
+    "4:3"
+  ],
+  "layout_values": [
+    "Title Slide",
+    "Title and Content",
+    "Two Content",
+    "Section Header",
+    "Title Only",
+    "Blank"
+  ],
   "two_content_syntax": "Explicit layout: Two Content requires exactly one top-level thematic break. Content before it goes left and content after it goes right. Prefer *** surrounded by blank lines. --- and ___ also work when parsed as thematic breaks. Either area can be empty, text flow, one image, or one table. Require exactly two non-overlapping body/content placeholders arranged left to right. Nested breaks and additional breaks are rejected.",
   "theme_color_syntax": "Use var(--slot-name) in text colors and backgrounds, for example var(--accent-1) or var(--dark-1).",
   "color_scheme_syntax": {
@@ -88,5 +116,26 @@
     "var(--hyperlink)",
     "var(--followed-hyperlink)"
   ],
-  "example": "---\naspect_ratio: \"16:9\"\nfonts:\n  body: Aptos\n  headings: Aptos Display\ncolor_scheme:\n  preset: Office\ntitle_color: \"var(--dark-1)\"\nbody_color: \"var(--dark-1)\"\nbackground: \"linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)\"\n---\n\n# Title slide\n---\nmaster: 1\nlayout: Title Slide\nnotes: |\n  Introduce the deck.\n---\n\nA concise subtitle line.\n\n# Overview\n---\nlayout: Title and Content\ntitle_color: \"var(--light-1)\"\nbody_color: \"var(--light-1)\"\nbackground: \"linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)\"\n---\n\n## Goals\n- Keep the markdown readable\n- Use real PowerPoint placeholders\n- Fail on ambiguous mappings\n"
+  "example": "---\naspect_ratio: \"16:9\"\nfonts:\n  body: Aptos\n  headings: Aptos Display\ncolor_scheme:\n  preset: Office\ntitle_color: \"var(--dark-1)\"\nbody_color: \"var(--dark-1)\"\nbackground: \"linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)\"\n---\n\n# Title slide\n---\nmaster: 1\nlayout: Title Slide\nnotes: |\n  Introduce the deck.\n---\n\nA concise subtitle line.\n\n# Overview\n---\nlayout: Title and Content\ntitle_color: \"var(--light-1)\"\nbody_color: \"var(--light-1)\"\nbackground: \"linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)\"\n---\n\n## Goals\n- Keep the markdown readable\n- Use real PowerPoint placeholders\n- Fail on ambiguous mappings\n",
+  "code_highlighting": {
+    "values": [
+      "default",
+      "theme-dark",
+      "theme-light"
+    ],
+    "default": "default",
+    "inheritance": "Slides inherit the document setting. Explicit default restores Pygments colors.",
+    "variants": "theme-dark means dark code on a light background. theme-light means light code on a dark background.",
+    "roles": {
+      "base": "Dark 1 or Light 1",
+      "comment": "Base color, italic",
+      "keyword": "Accent 1, bold",
+      "value": "Accent 2",
+      "named": "Accent 3"
+    },
+    "contrast_target": 4.5,
+    "analysis": "Solid colors, cropped image samples with 1% tails removed, or a 16 by 16 gradient grid. One analysis per code content placeholder. Native theme brightness adjustments preserve the requested variant.",
+    "limits": "Images and gradients are estimates. Overlaid template graphics are not composited. Unsupported backgrounds use an explicit assumption. Impossible contrast produces a warning.",
+    "report": "JSON code_highlighting entries include minimum_contrast, target_met, and warnings. target_met is null for an assumed background. Plain CLI warnings go to stderr."
+  }
 }

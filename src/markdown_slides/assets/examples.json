@@ -64,5 +64,11 @@
     "description": "A complete custom theme palette using preset: null and all 12 PowerPoint color slots.",
     "requirements": "No external assets. Use --list-color-schemes to discover preset alternatives. Omit fonts and colors to inherit a supplied template. Color-ignore flags leave image backgrounds intact.",
     "markdown": "---\ncolor_scheme:\n  preset: null\n  dark_1: \"#10263F\"\n  light_1: \"#FFFFFF\"\n  dark_2: \"#30475E\"\n  light_2: \"#F0F5FA\"\n  accent_1: \"#1D6FA8\"\n  accent_2: \"#2F8F83\"\n  accent_3: \"#C98424\"\n  accent_4: \"#8759A6\"\n  accent_5: \"#BE5266\"\n  accent_6: \"#67813D\"\n  hyperlink: \"#0066CC\"\n  followed_hyperlink: \"#704080\"\nbackground: \"var(--light-1)\"\ntitle_color: \"var(--accent-1)\"\nbody_color: \"var(--dark-1)\"\n---\n\n# Our palette\n\nTheme-aware content follows the selected colors.\n"
+  },
+  {
+    "id": "theme-code",
+    "description": "Optional theme syntax colors with document defaults, slide overrides, light and dark variants, and a reset to the original palette.",
+    "requirements": "No external assets. Theme variants target 4.5:1 using brightness adjustments. Inspect render warnings on complex backgrounds.",
+    "markdown": "---\ncode_highlighting: theme-dark\nbackground: \"#FFFFFF\"\n---\n\n# Dark theme colors on white\n\n```python\n# Comments retain readable contrast\ndef greet(name: str):\n    return f\"Hello, {name}\"\n```\n\n# Light theme colors on navy\n---\ncode_highlighting: theme-light\nbackground: \"#102030\"\ntitle_color: \"#FFFFFF\"\n---\n\n```typescript\ninterface Greeting { message: string }\nconst greet = (name: string): Greeting => ({\n  message: `Hello, ${name}`\n});\n```\n\n# Original highlighting palette\n---\ncode_highlighting: default\n---\n\n```html\n<p class=\"greeting\">Hello!</p>\n```\n"
   }
 ]

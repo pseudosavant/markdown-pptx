@@ -33,7 +33,7 @@ dependencies = [
   "Pillow>=10.0",
   "Pygments>=2.18",
   "PyYAML>=6.0",
-  "ps-python-pptx==1.1.0",
+  "ps-python-pptx==1.2.0",
   "pywin32>=311; sys_platform == 'win32'",
 ]
 

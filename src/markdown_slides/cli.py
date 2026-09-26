@@ -213,7 +213,7 @@ def main(
             stdout.write(build_about_text())
             return 0
         args = build_parser().parse_args(args_list)
-        return _run(args, stdin=stdin, stdout=stdout)
+        return _run(args, stdin=stdin, stdout=stdout, stderr=stderr)
     except MarkdownSlidesError as exc:
         _write_error(exc, json_mode=json_mode, stdout=stdout, stderr=stderr)
         return exc.context.exit_code
@@ -307,7 +307,7 @@ def _run_skill_command(args_list: list[str], *, stdout: TextIO) -> int:
     return 0
 
 
-def _run(args: argparse.Namespace, *, stdin: TextIO, stdout: TextIO) -> int:
+def _run(args: argparse.Namespace, *, stdin: TextIO, stdout: TextIO, stderr: TextIO) -> int:
     inspection_modes = {
         "list_masters": args.list_masters,
         "list_layouts": args.list_layouts,
@@ -517,6 +517,9 @@ def _run(args: argparse.Namespace, *, stdin: TextIO, stdout: TextIO) -> int:
         stdout.write(json.dumps(payload, indent=2) + "\n")
     else:
         stdout.write(f"{rendered_path}\n")
+        for area in render_report.get("code_highlighting", []):
+            for message in area["warnings"]:
+                stderr.write(f"Slide {area['slide']} code highlighting: {message}\n")
         if image_report is not None:
             stdout.write(f"Exported {len(image_report['slides'])} slide image(s) to {image_report['directory']}\n")
     return 0
@@ -637,6 +640,7 @@ def _format_syntax(payload: dict[str, object]) -> str:
         f"table options: {', '.join(table_options['defaults'])}",
         f"table option defaults: {json.dumps(table_options['defaults'])}",
         f"Two Content: {payload['two_content_syntax']}",
+        f"Code highlighting: {json.dumps(payload['code_highlighting'])}",
         "Authoring examples: --examples [NAME|list] [--json]",
         f"Supported markdown: {', '.join(payload['supported_markdown'])}",
         f"Unsupported markdown: {', '.join(payload['unsupported_markdown'])}",

@@ -24,7 +24,15 @@ from markdown_slides.models import (
     normalize_layout_name,
 )
 
-DOCUMENT_KEYS = {"aspect_ratio", "fonts", "color_scheme", "background", "title_color", "body_color"}
+DOCUMENT_KEYS = {
+    "aspect_ratio",
+    "fonts",
+    "color_scheme",
+    "background",
+    "title_color",
+    "body_color",
+    "code_highlighting",
+}
 SLIDE_KEYS = {
     "master",
     "layout",
@@ -34,6 +42,7 @@ SLIDE_KEYS = {
     "hide_background_graphics",
     "notes",
     "table",
+    "code_highlighting",
 }
 TABLE_OPTION_DEFAULTS = {
     "header_row": True,
@@ -121,6 +130,7 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
     document_text_colors = _parse_text_colors(document_config, line=1)
     color_scheme = _parse_color_scheme(document_config)
     document_background = _parse_background(document_config.get("background"), line=1)
+    code_highlighting = _parse_code_highlighting(document_config, source_name=source_name, line=1) or "default"
 
     parsed_slides: list[Slide] = []
     for slide_index, raw_slide in enumerate(slides, start=1):
@@ -228,6 +238,9 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
                 line_number=raw_slide.line_number,
                 title_fragments=raw_slide.title_fragments,
                 secondary_body=regions[1] if len(regions) == 2 else None,
+                code_highlighting=_parse_code_highlighting(
+                    raw_slide.config, source_name=source_name, line=raw_slide.line_number, slide_index=slide_index
+                ),
             )
         )
 
@@ -241,7 +254,25 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
         color_scheme=color_scheme,
         background=document_background,
         slides=parsed_slides,
+        code_highlighting=code_highlighting,
     )
+
+
+def _parse_code_highlighting(
+    config: dict, *, source_name: str, line: int, slide_index: int | None = None
+) -> str | None:
+    if "code_highlighting" not in config:
+        return None
+    value = config["code_highlighting"]
+    if not isinstance(value, str) or value not in {"default", "theme-dark", "theme-light"}:
+        raise ParseError(
+            "invalid_code_highlighting",
+            "code_highlighting must be default, theme-dark, or theme-light.",
+            input_path=source_name,
+            line=line,
+            slide_index=slide_index,
+        )
+    return value
 
 
 def _parse_table_options(

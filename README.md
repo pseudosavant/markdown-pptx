@@ -278,6 +278,47 @@ The intentionally unsupported set includes:
 - Layered backgrounds
 - Animations
 
+### Theme syntax colors
+
+Fenced code keeps its existing Pygments colors by default. Set `code_highlighting` in document front matter or override it on a slide:
+
+```yaml
+code_highlighting: theme-dark
+background: "#FFFFFF"
+```
+
+| Value | Behavior |
+| --- | --- |
+| `default` | Existing Pygments palette. No background analysis |
+| `theme-dark` | Dark code colors for a light background |
+| `theme-light` | Light code colors for a dark background |
+
+A slide inherits the document setting. Explicit `default` restores the original palette on that slide. These modes apply to code blocks, including plain blocks with no recognized language. Inline code keeps its ordinary text formatting. Theme modes override `body_color` within code blocks.
+
+| Code role | Theme slot |
+| --- | --- |
+| Ordinary names, punctuation, operators | Dark 1 for `theme-dark`, Light 1 for `theme-light` |
+| Comments | Same base color, italic |
+| Keywords and HTML tags | Accent 1, bold |
+| Strings, numbers, constants | Accent 2 |
+| Functions, types, classes, built-ins, HTML attributes | Accent 3 |
+
+The three accent roles stay fixed across languages and slides. Dark 1 and Light 1 provide the theme's primary text colors without consuming an accent. Each color receives the smallest native brightness adjustment needed to reach a **4.5:1 contrast ratio**, using the [WCAG relative luminance formula](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html). Colors that already meet the target remain unchanged. Comments meet the same target as other tokens.
+
+The output uses editable PowerPoint theme references. Changing the theme in PowerPoint changes these colors too, but does not rerun contrast analysis. Regenerate the deck after a theme change to recalculate the adjustments.
+
+Analysis runs once per content placeholder that contains code. Two Content areas are analyzed separately. Solid backgrounds use their resolved color. Image backgrounds use the visible source region behind the placeholder, including cover cropping, with at most 256 pixels on the longest side. A luminance histogram discards 1% at each tail and uses the remaining range. Decoded images are cached for the render. Supported gradients use a 16 by 16 grid across the placeholder.
+
+Image and gradient results are estimates. They do not guarantee contrast at every glyph. Template graphics layered over backgrounds, complex placeholder fills, and unsupported background effects are not fully rendered. When background inspection fails, the opposite theme text color is used as an explicit assumption and a warning is reported. A high-contrast background may make the target impossible. The renderer retains the requested light or dark variant, uses its maximum contrast, and reports the failure. It does not add a panel or switch variants.
+
+Plain CLI output sends warnings to stderr. JSON render output includes a `code_highlighting` array with slide and placeholder identifiers, analysis method, sample count, estimated minimum contrast, warnings, and `target_met`. That value is `null` when the background had to be assumed. The default palette produces no analysis entries.
+
+The color-ignore flags remove the existing document or slide color overrides. They retain `code_highlighting`, which then uses the remaining template colors and backgrounds.
+
+Use `markdown-pptx --examples theme-code` for a complete authoring example.
+
+Run `uv run python scripts/benchmark_code_colors.py` to compare the image range analysis with an average-only baseline. Both use the same crop and sample size. On the development machine, the 1080p and 4K cases took about 6 milliseconds per area, about 1.2 to 1.5 times the baseline. Image decoding is measured separately and cached during rendering. These are local measurements, not performance guarantees.
+
 ### Two content areas
 
 Select `Two Content` explicitly and put exactly one top-level thematic break between the left and right content:

@@ -24,6 +24,8 @@ Tests may inspect XML to verify the resulting file.
 | Table style references | `Table.style_id` |
 | Explicit gradients | `FillFormat.set_gradient()` |
 | Master image backgrounds | `SlideMaster.set_background_picture()` |
+| Inherited background inspection without edits | `Slide.background_info`, `SlideLayout.background_info`, `SlideMaster.background_info` |
+| Theme syntax colors and brightness variants | `ColorFormat.theme_color`, `ColorFormat.brightness` |
 | Picture stacking order | `Shape.send_to_back()` |
 | Picture description and title | `Shape.alt_text`, `alt_text_title` |
 
