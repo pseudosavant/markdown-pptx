@@ -225,10 +225,80 @@ table:
 
 >
 
-# Code block
+# Code block: PowerShell
 
 ```powershell
 uvx markdown-pptx sample/showcase.md sample/showcase.pptx --template sample/showcase-template.pptx --force
+```
+
+# Syntax highlighting: Python
+---
+notes: Language labels select syntax coloring. The highlighted code remains editable PowerPoint text.
+---
+
+```python
+# Summarize completed work
+def summarize(tasks: list[str]) -> str:
+    count = len(tasks)
+    return f"Completed {count} tasks"
+
+
+tasks = ["Design", "Build", "Review"]
+if len(tasks) >= 3:
+    print(summarize(tasks))
+```
+
+# Syntax highlighting: TypeScript
+---
+notes: TypeScript highlights type declarations, keywords, strings, and numeric values.
+---
+
+```typescript
+// Calculate the remaining work
+type Project = { name: string, completed: number }
+
+const remaining = (project: Project): number => {
+  return Math.max(0, 10 - project.completed)
+}
+
+const launch = { name: "Launch", completed: 7 }
+console.log(`Remaining: ${remaining(launch)}`)
+```
+
+# Syntax highlighting: HTML
+---
+notes: HTML highlights tags, attribute names, quoted values, and comments.
+---
+
+```html
+<!-- A compact project card -->
+<article class="project-card">
+  <h2 id="title">Launch checklist</h2>
+  <p>Three steps remain before release.</p>
+  <ul>
+    <li>Review the preview</li>
+    <li>Publish the update</li>
+  </ul>
+  <a href="/projects/launch">View project</a>
+</article>
+```
+
+# Syntax highlighting: CSS
+---
+notes: CSS highlights selectors, property names, color values, and units.
+---
+
+```css
+/* Style the project card */
+.project-card {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  color: #10263f;
+  background: #eef8ff;
+}
+
+.project-card a:hover { color: #1d6fa8; }
 ```
 
 # Local image
