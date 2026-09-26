@@ -92,12 +92,17 @@
     "local_images",
     "remote_images",
     "standalone_linked_images",
-    "image_alt_text_and_titles"
+    "image_alt_text_and_titles",
+    "document_wide_link_and_image_references",
+    "hyperlink_titles_as_screentips",
+    "list_block_indentation",
+    "ordered_list_zero_and_large_starts"
   ],
   "unsupported_markdown": [
     "horizontal_rules_outside_two_content_separator",
     "footnotes",
     "inline_images_in_text_flow",
+    "images_inside_list_items",
     "layered_backgrounds",
     "arbitrary_positioning",
     "animations"
@@ -137,5 +142,7 @@
     "analysis": "Solid colors, cropped image samples with 1% tails removed, or a 16 by 16 gradient grid. One analysis per code content placeholder. Native theme brightness adjustments preserve the requested variant.",
     "limits": "Images and gradients are estimates. Overlaid template graphics are not composited. Unsupported backgrounds use an explicit assumption. Impossible contrast produces a warning.",
     "report": "JSON code_highlighting entries include minimum_contrast, target_met, and warnings. target_met is null for an assumed background. Plain CLI warnings go to stderr."
-  }
+  },
+  "reference_syntax": "Definitions apply across the deck, including slide titles. Full, collapsed, and shortcut references work. Definitions may appear before the first slide after document front matter. The first normalized label wins. Definitions inside code, HTML comments, or YAML are not collected. Unresolved references remain literal. Optional text and picture link titles become ScreenTips. Picture titles remain separate metadata.",
+  "list_content_syntax": "Continuation paragraphs, code, and headings retain their containing list indentation. Nested lists inside quotes count toward the three-level limit. HTML comments are ignored. Images inside lists are rejected. Ordered values outside 1..32767 use editable text prefixes without automatic PowerPoint renumbering. Template paragraph spacing is preserved."
 }

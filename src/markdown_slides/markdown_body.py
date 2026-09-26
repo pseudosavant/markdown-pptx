@@ -10,7 +10,7 @@ from mdit_py_plugins.subscript import sub_plugin
 from mdit_py_plugins.superscript import superscript_plugin
 
 from markdown_slides.errors import ParseError, UnsupportedContentError
-from markdown_slides.models import BodyContent, ImageBlock, InlineText, Paragraph, TableBlock
+from markdown_slides.models import BodyContent, ImageBlock, InlineText, ListContext, Paragraph, TableBlock
 
 MD = MarkdownIt("commonmark").enable(["table", "strikethrough"])
 MD.use(sub_plugin)
@@ -51,9 +51,9 @@ class _Cursor:
 
 
 def parse_body_regions(
-    text: str, *, two_content: bool, source_name: str, slide_index: int, base_line: int
+    text: str, *, two_content: bool, source_name: str, slide_index: int, base_line: int, references: dict | None = None
 ) -> list[BodyContent]:
-    tokens = MD.parse(text)
+    tokens = MD.parse(text, {"references": dict(references or {})})
     _validate_supported_tokens(
         tokens,
         source_name=source_name,
@@ -119,6 +119,7 @@ def _parse_block_sequence(
     base_line: int,
     end_type: str | None = None,
     quote_depth: int = 0,
+    list_depth: int = 0,
 ) -> None:
     while cursor.index < len(cursor.tokens):
         token = cursor.tokens[cursor.index]
@@ -150,7 +151,7 @@ def _parse_block_sequence(
                 source_name=source_name,
                 slide_index=slide_index,
                 base_line=base_line,
-                level=0,
+                level=list_depth,
                 quote_depth=quote_depth,
             )
         elif token.type == "blockquote_open":
@@ -161,6 +162,7 @@ def _parse_block_sequence(
                 slide_index=slide_index,
                 base_line=base_line,
                 quote_depth=quote_depth,
+                list_depth=list_depth,
             )
         elif token.type == "fence":
             _parse_fence(token, content, quote_depth=quote_depth)
@@ -247,7 +249,13 @@ def _parse_paragraph(
         "image",
         "link_close",
     ]:
-        content.images.append(_image_block(non_space_children[1], href=non_space_children[0].attrGet("href")))
+        content.images.append(
+            _image_block(
+                non_space_children[1],
+                href=non_space_children[0].attrGet("href"),
+                link_title=non_space_children[0].attrGet("title"),
+            )
+        )
         cursor.index += 3
         return
     if any(child.type == "image" for child in non_space_children):
@@ -266,12 +274,13 @@ def _parse_paragraph(
     cursor.index += 3
 
 
-def _image_block(token: Token, *, href: str | None = None) -> ImageBlock:
+def _image_block(token: Token, *, href: str | None = None, link_title: str | None = None) -> ImageBlock:
     return ImageBlock(
         src=token.attrGet("src") or "",
         alt=_image_alt_text(token.children or []),
         title=token.attrGet("title"),
         href=href or None,
+        link_title=link_title,
     )
 
 
@@ -307,7 +316,8 @@ def _parse_list(
         )
     open_token = cursor.tokens[cursor.index]
     ordered = open_token.type == "ordered_list_open"
-    next_number = int(open_token.attrGet("start") or "1")
+    start = open_token.attrGet("start")
+    next_number = int(start) if start is not None else 1
     close_type = "ordered_list_close" if ordered else "bullet_list_close"
     cursor.index += 1
     while cursor.index < len(cursor.tokens):
@@ -321,12 +331,39 @@ def _parse_list(
             )
         cursor.index += 1
         has_marker = False
+        context = ListContext(level, next_number if ordered else None)
         while cursor.index < len(cursor.tokens) and cursor.tokens[cursor.index].type != "list_item_close":
             item_token = cursor.tokens[cursor.index]
+            if item_token.type in {"html_block", "html_inline"}:
+                visible = _html_text(item_token.content)
+                if visible:
+                    content.paragraphs.append(
+                        Paragraph(
+                            kind="list_continuation" if has_marker else "list_item",
+                            fragments=[InlineText(kind="text", text=visible)],
+                            level=level,
+                            ordered_index=next_number if ordered else None,
+                            quote_depth=quote_depth,
+                            list_context=context if has_marker else None,
+                        )
+                    )
+                    has_marker = True
+                cursor.index += 1
+                continue
             if item_token.type == "paragraph_open":
                 inline = cursor.tokens[cursor.index + 1]
+                if any(child.type == "image" for child in inline.children or []):
+                    raise _unsupported_token_error(
+                        inline,
+                        "Images are not supported inside list items. Use a standalone image content area.",
+                        source_name,
+                        slide_index,
+                        base_line,
+                    )
                 fragments = _parse_inline(inline.children or [])
                 checked = _consume_task_marker(fragments) if not has_marker else None
+                if not has_marker:
+                    context.task_checked = checked
                 content.paragraphs.append(
                     Paragraph(
                         kind="list_item" if not has_marker else "list_continuation",
@@ -335,6 +372,7 @@ def _parse_list(
                         ordered_index=next_number if ordered else None,
                         quote_depth=quote_depth,
                         task_checked=checked,
+                        list_context=context if has_marker else None,
                     )
                 )
                 has_marker = True
@@ -370,9 +408,11 @@ def _parse_list(
                         slide_index=slide_index,
                         base_line=base_line,
                         quote_depth=quote_depth,
+                        list_depth=level + 1,
                     )
                     for paragraph in nested.paragraphs:
-                        paragraph.level = level + 1
+                        if paragraph.kind != "list_item" and paragraph.list_context is None:
+                            paragraph.list_context = context
                     content.paragraphs.extend(nested.paragraphs)
                 elif item_token.type == "heading_open":
                     nested = BodyContent()
@@ -384,12 +424,12 @@ def _parse_list(
                         base_line=base_line,
                         quote_depth=quote_depth,
                     )
-                    nested.paragraphs[0].level = level + 1
+                    nested.paragraphs[0].list_context = context
                     content.paragraphs.extend(nested.paragraphs)
                 elif item_token.type in {"fence", "code_block"}:
                     nested = BodyContent()
                     _parse_fence(item_token, nested, quote_depth=quote_depth)
-                    nested.paragraphs[0].level = level + 1
+                    nested.paragraphs[0].list_context = context
                     content.paragraphs.extend(nested.paragraphs)
                     cursor.index += 1
                 else:
@@ -425,6 +465,7 @@ def _parse_blockquote(
     slide_index: int,
     base_line: int,
     quote_depth: int = 0,
+    list_depth: int = 0,
 ) -> None:
     cursor.index += 1
     nested = BodyContent()
@@ -436,6 +477,7 @@ def _parse_blockquote(
         base_line=base_line,
         end_type="blockquote_close",
         quote_depth=quote_depth + 1,
+        list_depth=list_depth,
     )
     if nested.images or nested.tables:
         raise UnsupportedContentError(
@@ -548,7 +590,9 @@ def _parse_inline_with_index(tokens: list[Token], index: int, end_types: set[str
             output.append(InlineText(kind=kind, children=inner))
         elif token.type == "link_open":
             inner, index = _parse_inline_with_index(tokens, index + 1, {"link_close"})
-            output.append(InlineText(kind="link", href=token.attrGet("href"), children=inner))
+            output.append(
+                InlineText(kind="link", href=token.attrGet("href"), children=inner, title=token.attrGet("title"))
+            )
         elif token.type == "html_inline":
             index += 1
         else:

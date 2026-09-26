@@ -28,6 +28,7 @@ Tests may inspect XML to verify the resulting file.
 | Theme syntax colors and brightness variants | `ColorFormat.theme_color`, `ColorFormat.brightness` |
 | Picture stacking order | `Shape.send_to_back()` |
 | Picture description and title | `Shape.alt_text`, `alt_text_title` |
+| Text and picture hyperlink ScreenTips | `Run.hyperlink.screen_tip`, `Shape.click_action.hyperlink.screen_tip` |
 
 Existing public python-pptx APIs provide hyperlinks, linked pictures, hard line
 breaks, table flags, theme colors, notes, and ordinary font styling.

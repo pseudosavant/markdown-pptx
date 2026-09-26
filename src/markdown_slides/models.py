@@ -30,6 +30,14 @@ class InlineText:
     text: str | None = None
     href: str | None = None
     children: list[InlineText] = field(default_factory=list)
+    title: str | None = None
+
+
+@dataclass(slots=True)
+class ListContext:
+    level: int
+    ordered_index: int | None
+    task_checked: bool | None = None
 
 
 @dataclass(slots=True)
@@ -42,6 +50,7 @@ class Paragraph:
     quote_depth: int = 0
     task_checked: bool | None = None
     code_language: str | None = None
+    list_context: ListContext | None = None
 
 
 @dataclass(slots=True)
@@ -50,6 +59,7 @@ class ImageBlock:
     alt: str
     title: str | None = None
     href: str | None = None
+    link_title: str | None = None
 
 
 @dataclass(slots=True)
