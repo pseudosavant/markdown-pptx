@@ -142,6 +142,12 @@ body_color: "var(--dark-2)"
 
 Theme-aware template objects and `var(--...)` references follow the resulting palette. Hard-coded RGB colors and embedded images do not. Inspect `--syntax` for all 12 keys and supported color formats.
 
+## Match Code Colors to the Theme
+
+Keep the default Pygments palette unless theme colors are wanted. Set `code_highlighting: theme-dark` for dark code on a light background or `theme-light` for light code on a dark background. The document setting applies to all slides unless a slide overrides it. Use `default` to restore the original palette on one slide. See `--examples theme-code` for a complete document.
+
+Theme modes use Dark 1 or Light 1 for ordinary code and comments, plus Accents 1, 2, and 3 for token categories. Native brightness adjustments target 4.5:1 contrast. Check `code_highlighting` entries in JSON render output for warnings and `target_met`. Image and gradient analysis is approximate. If contrast is insufficient or the background is assumed, select a better background or variant and inspect the rendered slide. Later PowerPoint theme edits require regeneration to recalculate contrast.
+
 ## Style Tables With Slide Metadata
 
 Keep pipe-table syntax standard and put PowerPoint table-style flags in the slide front matter. Use `table` only when the slide contains at least one table. These options apply to both tables on a Two Content slide:

@@ -24,6 +24,8 @@ from pygments.styles import get_style_by_name
 from pygments.util import ClassNotFound
 
 from markdown_slides.assets import default_template_path
+from markdown_slides.code_background import CodeBackgroundAnalyzer
+from markdown_slides.code_colors import token_role
 from markdown_slides.errors import AssetError, MarkdownSlidesError, RenderError, TemplateError
 from markdown_slides.models import (
     Background,
@@ -110,6 +112,7 @@ def render_pptx(
     _apply_aspect_ratio(presentation, deck.aspect_ratio)
     template_defaults = {entry.index: _read_template_defaults(entry.master) for entry in master_catalog}
     _apply_themes(master_catalog, deck)
+    code_analyzer = CodeBackgroundAnalyzer((presentation.slide_width, presentation.slide_height))
     owns_downloader = downloader is None
     downloader = downloader or Downloader(enabled=allow_remote_images)
     original_downloader_enabled = downloader.enabled
@@ -160,6 +163,7 @@ def render_pptx(
                 preserve_template_paragraph_formatting=preserve_template_paragraph_formatting,
                 base_dir=base_dir,
                 downloader=downloader,
+                code_analyzer=code_analyzer,
             )
             _render_notes(slide, slide_spec)
         if report is not None:
@@ -172,7 +176,10 @@ def render_pptx(
                     ],
                 }
             )
+            if code_analyzer.reports:
+                report["code_highlighting"] = code_analyzer.reports
     finally:
+        code_analyzer.close()
         if owns_downloader:
             downloader.close()
         else:
@@ -523,6 +530,7 @@ def _render_body(
     preserve_template_paragraph_formatting: bool,
     base_dir: Path,
     downloader: Downloader,
+    code_analyzer: CodeBackgroundAnalyzer,
 ) -> None:
     body = slide_spec.body
     body_color = _resolve_text_color(deck, slide_spec, "body")
@@ -542,6 +550,7 @@ def _render_body(
                 preserve_template_paragraph_formatting=preserve_template_paragraph_formatting,
                 base_dir=base_dir,
                 downloader=downloader,
+                code_analyzer=code_analyzer,
             )
         return
     if slide_spec.layout in {"Blank", "Title Only"} or body.is_empty:
@@ -555,6 +564,15 @@ def _render_body(
             template_defaults=template_defaults,
             text_color=body_color,
             preserve_template_paragraph_formatting=preserve_template_paragraph_formatting,
+            code_palette=code_analyzer.palette(
+                slide,
+                slide_spec,
+                deck,
+                placeholder,
+                body,
+                resolve_image=lambda src: _resolve_image_source(src, base_dir=base_dir, downloader=downloader),
+                fit_image=_fit_image_dimensions,
+            ),
         )
         return
     if slide_spec.layout != "Title and Content":
@@ -571,6 +589,7 @@ def _render_body(
         preserve_template_paragraph_formatting=preserve_template_paragraph_formatting,
         base_dir=base_dir,
         downloader=downloader,
+        code_analyzer=code_analyzer,
     )
 
 
@@ -586,6 +605,7 @@ def _render_content_area(
     preserve_template_paragraph_formatting: bool,
     base_dir: Path,
     downloader: Downloader,
+    code_analyzer: CodeBackgroundAnalyzer,
 ) -> None:
     placeholder.text_frame.clear()
     if body.paragraphs:
@@ -596,6 +616,15 @@ def _render_content_area(
             template_defaults=template_defaults,
             text_color=text_color,
             preserve_template_paragraph_formatting=preserve_template_paragraph_formatting,
+            code_palette=code_analyzer.palette(
+                slide,
+                slide_spec,
+                deck,
+                placeholder,
+                body,
+                resolve_image=lambda src: _resolve_image_source(src, base_dir=base_dir, downloader=downloader),
+                fit_image=_fit_image_dimensions,
+            ),
         )
         return
     if body.images:
@@ -622,6 +651,7 @@ def _render_text_flow(
     template_defaults: dict[str, float],
     text_color: str | None,
     preserve_template_paragraph_formatting: bool,
+    code_palette: dict | None = None,
 ) -> None:
     text_frame = placeholder.text_frame
     text_frame.clear()
@@ -654,7 +684,14 @@ def _render_text_flow(
             paragraph.space_before = Pt(6)
             paragraph.space_after = Pt(6)
         if paragraph_model.kind == "code":
-            _render_code(paragraph, paragraph_model, deck, template_defaults=template_defaults, text_color=text_color)
+            _render_code(
+                paragraph,
+                paragraph_model,
+                deck,
+                template_defaults=template_defaults,
+                text_color=text_color,
+                code_palette=code_palette,
+            )
             continue
         if paragraph_model.task_checked is not None:
             marker = "☑ " if paragraph_model.task_checked else "☐ "
@@ -765,7 +802,13 @@ def _apply_run_font(
 
 
 def _render_code(
-    paragraph, model: Paragraph, deck: Deck, *, template_defaults: dict[str, float], text_color: str | None
+    paragraph,
+    model: Paragraph,
+    deck: Deck,
+    *,
+    template_defaults: dict[str, float],
+    text_color: str | None,
+    code_palette: dict | None = None,
 ) -> None:
     code = model.fragments[0].text or "" if model.fragments else ""
     lexer = None
@@ -783,12 +826,16 @@ def _render_code(
             model,
             template_defaults=template_defaults,
             text_color=text_color,
+            theme_color=code_palette["base"] if code_palette else None,
         )
         return
     for kind, value in tokens:
         if not value:
             continue
         style = CODE_STYLE.style_for_token(kind) if not value.isspace() else None
+        role = token_role(kind)
+        if code_palette:
+            style = {"color": None, "bold": role == "keyword", "italic": role == "comment", "underline": False}
         _add_code_segment(
             paragraph,
             value,
@@ -797,6 +844,7 @@ def _render_code(
             template_defaults=template_defaults,
             text_color=text_color,
             highlight=style,
+            theme_color=code_palette[role] if code_palette else None,
         )
 
 
@@ -809,6 +857,7 @@ def _add_code_segment(
     template_defaults: dict[str, float],
     text_color: str | None,
     highlight: dict | None = None,
+    theme_color=None,
 ) -> None:
     for index, part in enumerate(value.split("\n")):
         if index:
@@ -818,6 +867,11 @@ def _add_code_segment(
         run = paragraph.add_run()
         run.text = part
         _apply_run_font(run, deck, model, {"code"}, template_defaults=template_defaults, text_color=text_color)
+        if theme_color is not None:
+            run.font.color.theme_color = theme_color.slot
+            run.font.color.brightness = theme_color.brightness
+            run.font.bold = False
+            run.font.italic = False
         if highlight:
             if highlight["color"]:
                 run.font.color.rgb = RGBColor.from_string(highlight["color"])
@@ -963,6 +1017,11 @@ def _fit_image(
         raise
     except (OSError, UnidentifiedImageError, PILImage.DecompressionBombError, PILImage.DecompressionBombWarning) as exc:
         raise AssetError("invalid_image", f"Image could not be decoded ({type(exc).__name__}).") from exc
+    return _fit_image_dimensions((image_width, image_height), left, top, width, height, contain=contain)
+
+
+def _fit_image_dimensions(image_size, left, top, width, height, *, contain):
+    image_width, image_height = image_size
     if image_width <= 0 or image_height <= 0:
         raise AssetError("invalid_image", "Image dimensions must be greater than zero.")
     scale = (

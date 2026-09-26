@@ -137,6 +137,7 @@ class Slide:
     line_number: int
     title_fragments: list[InlineText] = field(default_factory=list)
     secondary_body: BodyContent | None = None
+    code_highlighting: str | None = None
 
     @property
     def content_regions(self) -> list[BodyContent]:
@@ -154,3 +155,4 @@ class Deck:
     color_scheme: ColorScheme | None
     background: Background | None
     slides: list[Slide]
+    code_highlighting: str = "default"
