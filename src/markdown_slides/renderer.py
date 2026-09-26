@@ -662,7 +662,7 @@ def _render_text_flow(
         paragraph = text_frame.paragraphs[0] if index == 0 else text_frame.add_paragraph()
         paragraph.clear()
         _configure_paragraph_bullets(paragraph, paragraph_model)
-        if paragraph_model.kind == "list_continuation":
+        if paragraph_model.list_context is not None or paragraph_model.kind == "list_continuation":
             left, _ = _list_paragraph_indent(paragraph_model)
             _set_paragraph_indent(
                 paragraph,
@@ -693,6 +693,15 @@ def _render_text_flow(
                 code_palette=code_palette,
             )
             continue
+        if _manual_list_number(paragraph_model):
+            _add_fragment_runs(
+                paragraph,
+                InlineText(kind="text", text=f"{paragraph_model.ordered_index}. "),
+                deck,
+                paragraph_model,
+                template_defaults=template_defaults,
+                text_color=text_color,
+            )
         if paragraph_model.task_checked is not None:
             marker = "☑ " if paragraph_model.task_checked else "☐ "
             _add_fragment_runs(
@@ -723,6 +732,7 @@ def _add_fragment_runs(
     text_color: str | None,
     styles: frozenset[str] = frozenset(),
     href: str | None = None,
+    link_title: str | None = None,
 ) -> None:
     if fragment.kind == "break":
         paragraph.add_line_break()
@@ -730,6 +740,7 @@ def _add_fragment_runs(
     if fragment.children:
         child_styles = styles | {fragment.kind}
         child_href = fragment.href if fragment.kind == "link" else href
+        child_title = fragment.title if fragment.kind == "link" else link_title
         for child in fragment.children:
             _add_fragment_runs(
                 paragraph,
@@ -740,6 +751,7 @@ def _add_fragment_runs(
                 text_color=text_color,
                 styles=frozenset(child_styles),
                 href=child_href,
+                link_title=child_title,
             )
         return
     if not fragment.text:
@@ -748,6 +760,8 @@ def _add_fragment_runs(
     run.text = fragment.text
     if href:
         run.hyperlink.address = href
+        if link_title:
+            run.hyperlink.screen_tip = link_title
     _apply_run_font(
         run,
         deck,
@@ -973,6 +987,8 @@ def _render_image(
     picture.alt_text_title = image.title
     if image.href:
         picture.click_action.hyperlink.address = image.href
+        if image.link_title:
+            picture.click_action.hyperlink.screen_tip = image.link_title
 
 
 def _resolve_image_source(src: str, *, base_dir: Path, downloader: Downloader):
@@ -1143,7 +1159,9 @@ def _configure_paragraph_bullets(paragraph, paragraph_model) -> None:
     paragraph.bullet = BulletStyle.DEFAULT
     if paragraph_model.kind == "list_item":
         paragraph.level = paragraph_model.level
-        if paragraph_model.ordered_index is not None:
+        if _manual_list_number(paragraph_model):
+            paragraph.bullet = BulletStyle.NO_BULLET
+        elif paragraph_model.ordered_index is not None:
             paragraph.bullet = BulletStyle.numbered(
                 MSO_NUMBERED_BULLET_STYLE.ARABIC_PERIOD, start_at=paragraph_model.ordered_index
             )
@@ -1159,14 +1177,23 @@ def _configure_paragraph_bullets(paragraph, paragraph_model) -> None:
 
 
 def _list_paragraph_indent(paragraph_model) -> tuple[float, float]:
-    if paragraph_model.task_checked is not None and paragraph_model.ordered_index is None:
-        return 0.3 * paragraph_model.quote_depth + 0.4 * paragraph_model.level, 0
-    bullet_position = 0.3 * paragraph_model.quote_depth + 0.45 * (paragraph_model.level + 1) - 0.22
-    if paragraph_model.ordered_index is not None:
-        digits = len(str(paragraph_model.ordered_index))
+    context = paragraph_model.list_context or paragraph_model
+    if context.task_checked is not None and context.ordered_index is None:
+        return 0.3 * paragraph_model.quote_depth + 0.4 * context.level, 0
+    bullet_position = 0.3 * paragraph_model.quote_depth + 0.45 * (context.level + 1) - 0.22
+    if context.ordered_index is not None:
+        digits = len(str(context.ordered_index))
         hanging = 0.4 + 0.16 * (digits - 1)
         return bullet_position + hanging, hanging
     return bullet_position + 0.22, 0.22
+
+
+def _manual_list_number(paragraph_model) -> bool:
+    return (
+        paragraph_model.kind == "list_item"
+        and paragraph_model.ordered_index is not None
+        and not 1 <= paragraph_model.ordered_index <= 32767
+    )
 
 
 def _set_paragraph_indent(paragraph, *, left: float, hanging: float) -> None:

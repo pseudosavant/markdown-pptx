@@ -484,6 +484,52 @@ One palette is reused across all code blocks in this area.
 }
 ```
 
+# [Shared references][showcase-guide]
+---
+notes: The title and body use a reference defined on a later slide. The optional link title becomes a ScreenTip in PowerPoint. Hover over a link in Slide Show view to see the tip.
+---
+
+Read the [project guide][showcase-guide].
+
+The same definition can supply links throughout the deck.
+
+[**Formatted** *links*](https://github.com/pseudosavant/markdown-pptx "Open the markdown-pptx project") retain their ScreenTips.
+
+# Code stays inside its list item
+---
+code_highlighting: theme-dark
+background: "#FFFFFF"
+notes: The code block and result heading align with the parent list text. The HTML comment is omitted.
+---
+
+1. Run the check
+
+   <!-- This implementation note stays out of the slide. -->
+
+   ```python
+   status = "Ready"
+   print(status)
+   ```
+
+   ## Result
+
+   Continue after checking the output.
+
+2. Present the result
+
+# Numbering and reusable definitions
+---
+notes: Zero is preserved with an editable text marker. Native numbering is used where PowerPoint supports it. The reference definition at the bottom is invisible and serves earlier slides.
+---
+
+0. Prepare the content
+1. Render the presentation
+2. Review in PowerPoint
+
+Return to the [project guide][showcase-guide] for more examples.
+
+[showcase-guide]: https://github.com/pseudosavant/markdown-pptx "Read the markdown-pptx guide"
+
 # Markdown in. Editable PowerPoint out.
 ---
 layout: Title Slide

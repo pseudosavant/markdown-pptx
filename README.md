@@ -278,6 +278,38 @@ The intentionally unsupported set includes:
 - Layered backgrounds
 - Animations
 
+### Shared references and hyperlink titles
+
+Link and image definitions apply across the whole deck, including slide titles. Full references (`[Guide][docs]`), collapsed references (`[docs][]`), and shortcut references (`[docs]`) work. Definitions can appear before the first slide, after document front matter, or in a later slide body. They do not produce visible content. Labels follow CommonMark normalization, and the first definition wins.
+
+```markdown
+[docs]: https://example.com "Read the documentation"
+
+# [Documentation][docs]
+
+Read the [guide][docs].
+
+# Next steps
+
+Revisit [docs] before starting.
+```
+
+Definitions inside fenced or indented code, HTML comments, and YAML metadata are not collected. Unresolved references remain literal Markdown text. Ordinary visible content before the first slide remains invalid.
+
+Optional link titles become PowerPoint ScreenTips on text links, including nested formatting and slide titles. For a linked standalone image, the image title supplies picture metadata and the outer link title supplies the ScreenTip:
+
+```markdown
+[![Quarterly chart](chart.png "Revenue chart")](https://example.com "Open the full report")
+```
+
+Use `--examples references` for a complete document.
+
+### Content inside lists
+
+Continuation paragraphs, code blocks, and body headings retain the containing list item's text indentation. Lists inside quotes retain their relative nesting and still count toward the three-level limit. HTML comments inside lists are ignored. Images inside list items produce an explicit error. Use a standalone image content area instead.
+
+Ordered lists preserve their starting number, including zero. PowerPoint native numbering is used for values from 1 through 32767. Outside that range, numbers are editable text prefixes and do not automatically renumber after edits in PowerPoint. Subsequent numbers follow the first marker, as in CommonMark. Template paragraph spacing is preserved.
+
 ### Theme syntax colors
 
 Fenced code keeps its existing Pygments colors by default. Set `code_highlighting` in document front matter or override it on a slide:

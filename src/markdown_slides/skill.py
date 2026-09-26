@@ -72,6 +72,10 @@ Soft line breaks become spaces. Use two trailing spaces or a trailing backslash 
 
 Choose the layout before authoring each slide. `Title and Content` accepts text flow, one image, or one table. Use `Two Content` for text beside an image or table, or for two independent text areas. Keep content concise enough for the available space. Use real line breaks for intentional breaks and allow PowerPoint to wrap ordinary prose.
 
+Reuse link and image reference definitions across the deck, including in titles. Definitions may precede the first slide after document front matter. The first definition wins. `--examples references` shows full, collapsed, and shortcut references. Optional link titles become PowerPoint ScreenTips. A linked image has separate image metadata and link ScreenTip titles.
+
+Indent code, headings, and continuation paragraphs within their list item. Comments inside lists are ignored. Images inside lists are rejected. All nested lists count toward the three-level limit, including lists inside quotes. Ordered values outside 1 through 32767 use editable text prefixes that do not automatically renumber in PowerPoint.
+
 ## Author Two Content Slides
 
 Set `layout: Two Content` and insert exactly one top-level thematic break. Content before the break fills the left placeholder. Content after it fills the right placeholder:

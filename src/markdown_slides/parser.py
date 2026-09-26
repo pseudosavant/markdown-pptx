@@ -111,6 +111,7 @@ class RawSlide:
     body_line_number: int
     config: dict[str, object]
     body_markdown: str
+    title_source: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +122,7 @@ class FenceState:
 
 def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
     lines = text.splitlines()
-    document_config, slides = _split_source(lines, source_name=source_name)
+    document_config, slides, references = _split_source(lines, source_name=source_name)
     if not slides:
         raise ParseError("missing_slides", "The document must contain at least one '# H1' slide.")
 
@@ -134,6 +135,7 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
 
     parsed_slides: list[Slide] = []
     for slide_index, raw_slide in enumerate(slides, start=1):
+        raw_slide.title, raw_slide.title_fragments = _heading_payload(raw_slide.title_source, references=references)
         master = _parse_master_selector(
             raw_slide.config.get("master"),
             line=raw_slide.line_number,
@@ -199,6 +201,7 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
             source_name=source_name,
             slide_index=slide_index,
             base_line=raw_slide.body_line_number,
+            references=references,
         )
         body = regions[0]
         if normalized_layout is None:
@@ -352,7 +355,7 @@ def _parse_master_selector(
     return value
 
 
-def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, object], list[RawSlide]]:
+def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, object], list[RawSlide], dict]:
     index = 0
     document_config: dict[str, object] = {}
     if lines and lines[0].strip() == "---":
@@ -360,6 +363,8 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
 
     slides: list[RawSlide] = []
     current_title: str | None = None
+    current_title_source = ""
+    reference_env: dict = {}
     current_title_fragments: list[InlineText] = []
     current_line: int | None = None
     current_body_line: int | None = None
@@ -407,9 +412,11 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
                         body_line_number=current_body_line or 1,
                         config=current_config,
                         body_markdown="\n".join(prefix).rstrip(),
+                        title_source=current_title_source,
                     )
                 )
-            elif _html_text("\n".join(prefix)):
+                MD.parse("\n".join(prefix), reference_env)
+            elif _visible_preamble(prefix, reference_env):
                 first = next(i for i, part in enumerate(prefix) if part.strip())
                 raise ParseError(
                     "content_before_first_slide",
@@ -418,6 +425,7 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
                     input_path=source_name,
                 )
             current_title = title
+            current_title_source = title_source
             current_title_fragments = title_fragments
             current_line = title_line
             current_config = {}
@@ -439,9 +447,11 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
                 body_line_number=current_body_line or 1,
                 config=current_config,
                 body_markdown="\n".join(current_body).rstrip(),
+                title_source=current_title_source,
             )
         )
-    elif _html_text("\n".join(current_body)):
+        MD.parse("\n".join(current_body), reference_env)
+    elif _visible_preamble(current_body, reference_env):
         first = next(i for i, part in enumerate(current_body) if part.strip())
         raise ParseError(
             "content_before_first_slide",
@@ -449,7 +459,19 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
             line=first + 1,
             input_path=source_name,
         )
-    return document_config, slides
+    return document_config, slides, reference_env.get("references", {})
+
+
+def _visible_preamble(lines: list[str], env: dict) -> bool:
+    """Reference definitions and ignored HTML may precede the first slide."""
+    tokens = MD.parse("\n".join(lines), env)
+    for token in tokens:
+        if token.type in {"paragraph_open", "paragraph_close"}:
+            continue
+        if token.type in {"html_block", "inline"} and not _html_text(token.content):
+            continue
+        return True
+    return False
 
 
 def _top_level_h1_start(lines: list[str]) -> int | None:
@@ -468,8 +490,8 @@ def _top_level_h1_start(lines: list[str]) -> int | None:
     return None
 
 
-def _heading_payload(source: str) -> tuple[str, list[InlineText]]:
-    tokens = MD.parse(source)
+def _heading_payload(source: str, *, references: dict | None = None) -> tuple[str, list[InlineText]]:
+    tokens = MD.parse(source, {"references": dict(references or {})})
     inline = next(token for token in tokens if token.type == "inline")
     fragments = parse_inline_children(inline.children or [])
     return _plain_inline(fragments).strip(), fragments

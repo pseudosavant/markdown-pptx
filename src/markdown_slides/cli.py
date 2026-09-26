@@ -641,6 +641,8 @@ def _format_syntax(payload: dict[str, object]) -> str:
         f"table option defaults: {json.dumps(table_options['defaults'])}",
         f"Two Content: {payload['two_content_syntax']}",
         f"Code highlighting: {json.dumps(payload['code_highlighting'])}",
+        f"References and link titles: {payload['reference_syntax']}",
+        f"List content: {payload['list_content_syntax']}",
         "Authoring examples: --examples [NAME|list] [--json]",
         f"Supported markdown: {', '.join(payload['supported_markdown'])}",
         f"Unsupported markdown: {', '.join(payload['unsupported_markdown'])}",

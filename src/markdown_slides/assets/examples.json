@@ -32,8 +32,8 @@
   {
     "id": "lists",
     "description": "Bullet and ordered lists with three nesting levels, continuation paragraphs, empty items, and static task checkboxes.",
-    "requirements": "No external assets. Indent continuation paragraphs within their item. Checkboxes are static symbols in PowerPoint.",
-    "markdown": "# List structure\n\n- Parent item\n  - Child item\n    - Third level\n\n  Continuation paragraph under the parent.\n\n-\n- Another item\n\n# Ordered work\n\n3. Review\n4. Deliver\n\n- [x] Research complete\n- [ ] Implementation pending\n"
+    "requirements": "No external assets. Indent continuation paragraphs within their item. Checkboxes are static symbols in PowerPoint. Code and headings retain the containing list indentation. Comments are ignored. Images inside lists are rejected. Numbering outside 1..32767 uses static editable prefixes.",
+    "markdown": "# List structure\n\n- Parent item\n  - Child item\n    - Third level\n\n  Continuation paragraph under the parent.\n\n-\n- Another item\n\n# Ordered work\n\n3. Review\n4. Deliver\n\n- [x] Research complete\n- [ ] Implementation pending\n\n# Code within a list\n\n1. Run the check\n\n   <!-- Keep the implementation note out of the slide -->\n\n   ```python\n   print(\"Ready\")\n   ```\n\n   ## Result\n\n   Continue after checking the output.\n\n2. Present the result\n\n# Start at zero\n\n0. Prepare\n1. Run\n2. Review\n"
   },
   {
     "id": "quotes-code",
@@ -70,5 +70,11 @@
     "description": "Optional theme syntax colors with document defaults, slide overrides, light and dark variants, and a reset to the original palette.",
     "requirements": "No external assets. Theme variants target 4.5:1 using brightness adjustments. Inspect render warnings on complex backgrounds.",
     "markdown": "---\ncode_highlighting: theme-dark\nbackground: \"#FFFFFF\"\n---\n\n# Dark theme colors on white\n\n```python\n# Comments retain readable contrast\ndef greet(name: str):\n    return f\"Hello, {name}\"\n```\n\n# Light theme colors on navy\n---\ncode_highlighting: theme-light\nbackground: \"#102030\"\ntitle_color: \"#FFFFFF\"\n---\n\n```typescript\ninterface Greeting { message: string }\nconst greet = (name: string): Greeting => ({\n  message: `Hello, ${name}`\n});\n```\n\n# Original highlighting palette\n---\ncode_highlighting: default\n---\n\n```html\n<p class=\"greeting\">Hello!</p>\n```\n"
+  },
+  {
+    "id": "references",
+    "description": "Shared references across slides and titles, forward definitions, and hyperlink ScreenTips.",
+    "requirements": "No external assets. Definitions do not create slides or visible content. First definition wins. Use the images topic for linked pictures and their separate titles.",
+    "markdown": "[guide]: https://example.com/guide \"Read the full guide\"\n\n# [Documentation][guide]\n\nRead the [guide][] and the [next steps][next].\n\n# Follow up\n\nRevisit [guide] before starting.\n\n[**Project** *details*](https://example.com/project \"Open project details\")\n\n[next]: https://example.com/next \"Next steps\"\n"
   }
 ]
