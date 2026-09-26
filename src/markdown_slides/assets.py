@@ -28,5 +28,10 @@ def load_syntax_payload() -> dict[str, Any]:
     return json.loads(asset_path("syntax.json").read_text(encoding="utf-8"))
 
 
+@lru_cache(maxsize=1)
+def load_examples() -> list[dict[str, Any]]:
+    return json.loads(asset_path("examples.json").read_text(encoding="utf-8"))
+
+
 def default_template_path() -> Path:
     return asset_path("example.pptx")

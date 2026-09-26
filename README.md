@@ -82,6 +82,8 @@ Inspect the supported format or the layouts in the default template:
 
 ```powershell
 uvx markdown-pptx --syntax
+uvx markdown-pptx --examples list
+uvx markdown-pptx --examples two-content
 uvx markdown-pptx --list-layouts
 ```
 
@@ -222,7 +224,7 @@ table:
 | Total | $50,000 |
 ```
 
-Table flags control native PowerPoint styling. They do not calculate totals or change the Markdown table structure. A slide may use `table` metadata only when its body contains exactly one table.
+Table flags control native PowerPoint styling. They do not calculate totals or change the Markdown table structure. A slide may use `table` metadata only when it contains at least one table. The flags apply to both tables on a Two Content slide.
 
 ### Images and paths
 
@@ -243,6 +245,7 @@ The built-in template provides these common layouts. Supplied templates may use 
 | `Title Slide` | Body text is placed in the subtitle placeholder |
 | `Section Header` | Body text is placed in the subtitle or body placeholder |
 | `Title and Content` | Accepts text flow, one image, or one table |
+| `Two Content` | One thematic break separates left and right content. Each side accepts text flow, one image, or one table |
 | `Title Only` | Does not accept body content |
 | `Blank` | Requires an empty title and empty body |
 
@@ -268,12 +271,56 @@ HTML comments and tags are ignored. Text between tags stays visible as plain tex
 
 The intentionally unsupported set includes:
 
-- Thematic breaks such as `***` and `---`
+- Thematic breaks outside the single Two Content separator
 - Footnotes
 - Images mixed into text paragraphs
 - Arbitrary positioning
 - Layered backgrounds
 - Animations
+
+### Two content areas
+
+Select `Two Content` explicitly and put exactly one top-level thematic break between the left and right content:
+
+```markdown
+# Compare options
+---
+layout: Two Content
+---
+
+## First option
+
+- Small scope
+- Quick feedback
+
+***
+
+## Second option
+
+- Broader scope
+- More preparation
+```
+
+Each side follows the same content rules as `Title and Content`. Text beside an image or table is supported. Mixing text and an image or table within one side is rejected. Either side can be empty, but the separator is still required.
+
+Prefer `***` surrounded by blank lines. CommonMark `---` and `___` thematic breaks also work. A `---` directly below paragraph text is a Setext H2 underline. YAML front matter remains valid only immediately after the slide heading. Breaks inside code fences remain literal code. Nested breaks and more than one break are rejected.
+
+The selected template layout must contain exactly two body/content placeholders with non-overlapping horizontal bounds. Content follows their position from left to right, regardless of placeholder index. No divider line or extra text boxes are created. Layouts with three or more content areas are unsupported.
+
+### Discover authoring examples
+
+The CLI includes complete Markdown documents covering every supported metadata key and Markdown feature:
+
+```powershell
+uvx markdown-pptx --examples
+uvx markdown-pptx --examples list
+uvx markdown-pptx --examples two-content
+uvx markdown-pptx --examples tables --json
+```
+
+`--examples` prints the full annotated catalog. `--examples list` lists topic names and descriptions. `--examples NAME` prints only the selected document's raw Markdown, suitable for saving as a `.md` file. `--json` returns structured entries with descriptions, asset requirements, and Markdown source. The list form omits the source to keep discovery compact. Each example is a separate document. Image examples require the assets described in their requirements.
+
+Use `--help` to discover commands, `--syntax` to inspect the format contract, and `--examples` to learn authoring. Use `--list-layouts --template theme.pptx --json` to check a template's actual layout compatibility. These commands work without installing a skill.
 
 ## Automation and image export
 

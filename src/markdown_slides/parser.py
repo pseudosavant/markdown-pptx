@@ -9,7 +9,7 @@ import yaml
 
 from markdown_slides.assets import load_color_schemes
 from markdown_slides.errors import ParseError, UnsupportedContentError
-from markdown_slides.markdown_body import MD, _html_text, parse_body_markdown, parse_inline_children
+from markdown_slides.markdown_body import MD, _html_text, parse_body_regions, parse_inline_children
 from markdown_slides.models import (
     Background,
     BodyContent,
@@ -60,6 +60,7 @@ COLOR_KEYS = {
 SUPPORTED_LAYOUTS = {
     "Title Slide",
     "Title and Content",
+    "Two Content",
     "Section Header",
     "Title Only",
     "Blank",
@@ -182,28 +183,31 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
             base_line=raw_slide.body_line_number,
             source_name=source_name,
         )
-        body = parse_body_markdown(
+        regions = parse_body_regions(
             raw_slide.body_markdown,
+            two_content=normalized_layout == "Two Content",
             source_name=source_name,
             slide_index=slide_index,
             base_line=raw_slide.body_line_number,
         )
+        body = regions[0]
         if normalized_layout is None:
             if raw_slide.title == "" and body.is_empty:
                 normalized_layout = "Blank"
             else:
                 normalized_layout = "Title and Content"
-        _validate_layout_content(
-            layout=normalized_layout,
-            title=raw_slide.title,
-            body=body,
-            slide_index=slide_index,
-            source_name=source_name,
-            line=raw_slide.line_number,
-        )
-        if "table" in raw_slide.config and len(body.tables) != 1:
+        for region in regions:
+            _validate_layout_content(
+                layout=normalized_layout,
+                title=raw_slide.title,
+                body=region,
+                slide_index=slide_index,
+                source_name=source_name,
+                line=raw_slide.line_number,
+            )
+        if "table" in raw_slide.config and not any(region.tables for region in regions):
             raise UnsupportedContentError(
-                "Slide table options require the slide body to contain exactly one table.",
+                "Slide table options require at least one table on the slide.",
                 slide_index=slide_index,
                 line=raw_slide.line_number,
                 input_path=source_name,
@@ -223,6 +227,7 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
                 body=body,
                 line_number=raw_slide.line_number,
                 title_fragments=raw_slide.title_fragments,
+                secondary_body=regions[1] if len(regions) == 2 else None,
             )
         )
 
@@ -762,17 +767,17 @@ def _validate_layout_content(
                 input_path=source_name,
             )
         return
-    if layout == "Title and Content":
+    if layout in {"Title and Content", "Two Content"}:
         if body.has_text_flow and body.has_non_text:
             raise UnsupportedContentError(
-                "A Title and Content slide cannot mix text-flow blocks with images or tables without synthesized text boxes.",
+                f"Each content area of a {layout} slide cannot mix text-flow blocks with images or tables.",
                 slide_index=slide_index,
                 line=line,
                 input_path=source_name,
             )
         if len(body.images) > 1 or len(body.tables) > 1 or (body.images and body.tables):
             raise UnsupportedContentError(
-                "A Title and Content slide may contain at most one non-text body object.",
+                f"Each content area of a {layout} slide may contain at most one non-text body object.",
                 slide_index=slide_index,
                 line=line,
                 input_path=source_name,

@@ -114,7 +114,7 @@ def test_syntax_json_output() -> None:
     assert "table" in payload["slide_front_matter_keys"]
     assert "1-based" in payload["master_selector_syntax"]
     assert payload["table_options"] == {
-        "scope": "Slide-level options that require exactly one pipe table in the slide body.",
+        "scope": "Slide-level options applied to every table on the slide. Require at least one pipe table.",
         "defaults": {
             "header_row": True,
             "total_row": False,
@@ -125,13 +125,20 @@ def test_syntax_json_output() -> None:
         },
     }
     assert payload["aspect_ratio_values"] == ["16:9", "4:3"]
-    assert payload["layout_values"] == ["Title Slide", "Title and Content", "Section Header", "Title Only", "Blank"]
+    assert payload["layout_values"] == [
+        "Title Slide",
+        "Title and Content",
+        "Two Content",
+        "Section Header",
+        "Title Only",
+        "Blank",
+    ]
     assert "atx_or_setext_h1_slide_boundaries" in payload["supported_markdown"]
     assert "hard_line_breaks" in payload["supported_markdown"]
     assert "task_lists_with_static_checkboxes" in payload["supported_markdown"]
     assert "fenced_code_syntax_coloring" in payload["supported_markdown"]
     assert "standalone_linked_images" in payload["supported_markdown"]
-    assert "horizontal_rules" in payload["unsupported_markdown"]
+    assert "horizontal_rules_outside_two_content_separator" in payload["unsupported_markdown"]
     assert payload["theme_color_syntax"] == (
         "Use var(--slot-name) in text colors and backgrounds, for example var(--accent-1) or var(--dark-1)."
     )
@@ -176,7 +183,7 @@ def test_syntax_plain_output_lists_all_theme_color_variables() -> None:
     output = stdout.getvalue()
     assert exit_code == 0
     assert "aspect_ratio values: 16:9, 4:3" in output
-    assert "layout values: Title Slide, Title and Content, Section Header, Title Only, Blank" in output
+    assert "layout values: Title Slide, Title and Content, Two Content, Section Header, Title Only, Blank" in output
     assert "table options: header_row, total_row, first_column, last_column, banded_rows, banded_columns" in output
     assert 'table option defaults: {"header_row": true' in output
     assert "Theme color syntax:" in output
@@ -237,7 +244,7 @@ def test_list_layouts_json_describes_selected_master_and_compatibility() -> None
     assert title_and_content["compatible"] is True
     assert {item["type"] for item in title_and_content["placeholders"]} >= {"title", "object"}
     two_content = next(item for item in payload["layout_details"] if item["name"] == "Two Content")
-    assert two_content["compatible"] is False
+    assert two_content["compatible"] is True
     assert stderr.getvalue() == ""
 
 

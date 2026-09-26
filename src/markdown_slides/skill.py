@@ -47,12 +47,16 @@ When the format or template is unfamiliar, inspect it before writing the deck:
 
 ```text
 uvx markdown-pptx --syntax
+uvx markdown-pptx --examples list
+uvx markdown-pptx --examples two-content
 uvx markdown-pptx --list-color-schemes
 uvx markdown-pptx --list-masters --template theme.pptx
 uvx markdown-pptx --list-layouts --template theme.pptx
 ```
 
-Use `--json` when programmatic inspection is more reliable. The renderer retains all slide masters in a supplied template. Master selectors are 1-based indices or exact unique master/theme names; prefer indices because names can be blank or duplicated.
+Use `--help` for CLI options, `--syntax` for the format contract, and `--examples list` to find relevant authoring topics. `--examples NAME` returns a complete Markdown document that can be saved directly. `--examples` prints the full annotated catalog. Read only the topics needed for the deck. Image examples explain their required assets.
+
+Use `--json` when programmatic inspection is more reliable. The renderer retains all slide masters in a supplied template. Master selectors are 1-based indices or exact unique master/theme names. Prefer indices because names can be blank or duplicated.
 
 ## Create A Deck
 
@@ -65,6 +69,33 @@ uvx markdown-pptx deck.md deck.pptx --json
 If no output path is supplied, the tool writes a `.pptx` beside the Markdown input. Prefer an explicit output path for agent workflows so the result is easy to report.
 
 Soft line breaks become spaces. Use two trailing spaces or a trailing backslash for a visible line break within a paragraph. Task list markers become static checkboxes. Fenced code can use a language label for editable syntax coloring. Image descriptions, optional titles, and links around standalone images are preserved.
+
+Choose the layout before authoring each slide. `Title and Content` accepts text flow, one image, or one table. Use `Two Content` for text beside an image or table, or for two independent text areas. Keep content concise enough for the available space. Use real line breaks for intentional breaks and allow PowerPoint to wrap ordinary prose.
+
+## Author Two Content Slides
+
+Set `layout: Two Content` and insert exactly one top-level thematic break. Content before the break fills the left placeholder. Content after it fills the right placeholder:
+
+```markdown
+# Compare options
+---
+layout: Two Content
+---
+
+## First option
+
+- Small scope
+- Quick feedback
+
+***
+
+## Second option
+
+- Broader scope
+- More preparation
+```
+
+Each side independently accepts text flow, one image, or one table. Either side may be empty. Use `***` on its own line with blank lines around it. `---` and `___` work when parsed as thematic breaks, but `---` can also be YAML or a Setext H2 underline. A divider does not start a new slide or draw a line. More than one divider, nested dividers, and dividers on other layouts are rejected. The template must provide exactly two non-overlapping content placeholders arranged left to right. Three or more content areas are unsupported.
 
 ## Use Templates Carefully
 
@@ -113,7 +144,7 @@ Theme-aware template objects and `var(--...)` references follow the resulting pa
 
 ## Style Tables With Slide Metadata
 
-Keep pipe-table syntax standard and put PowerPoint table-style flags in the slide front matter. Use `table` only when the slide body contains exactly one table:
+Keep pipe-table syntax standard and put PowerPoint table-style flags in the slide front matter. Use `table` only when the slide contains at least one table. These options apply to both tables on a Two Content slide:
 
 ```text
 # Quarterly summary
@@ -155,9 +186,9 @@ uvx markdown-pptx deck.md deck.pptx --export-images png --json
 uvx markdown-pptx deck.md deck.pptx --export-images jpeg --slides 1,3-5 --image-width 1600 --json
 ```
 
-Use `--image-dir DIR` to choose the destination; otherwise images go into `<pptx-name>-images`. PNG is preferred for slide text and diagrams. The slide selector is 1-based and accepts comma-separated numbers and ranges. Image export requires Windows, an interactive desktop session, and an installed, licensed, initialized PowerPoint application. Do not use these options on Linux or macOS, and do not treat the feature as a server-side or built-in PPTX renderer.
+Use `--image-dir DIR` to choose the destination. Otherwise images go into `<pptx-name>-images`. PNG is preferred for slide text and diagrams. The slide selector is 1-based and accepts comma-separated numbers and ranges. Image export requires Windows, an interactive desktop session, and an installed, licensed, initialized PowerPoint application. Do not use these options on Linux or macOS, and do not treat the feature as a server-side or built-in PPTX renderer.
 
-The editable PPTX is retained if PowerPoint image export fails. With `--json`, inspect `error.details.pptx_output` before reporting the partial result. Add `--force` only when replacement of the PPTX or colliding generated images is authorized; unrelated files in the image directory are preserved.
+The editable PPTX is retained if PowerPoint image export fails. With `--json`, inspect `error.details.pptx_output` before reporting the partial result. Add `--force` only when replacement of the PPTX or colliding generated images is authorized. Unrelated files in the image directory are preserved.
 
 ## Overwrite Safety
 
@@ -169,7 +200,7 @@ uvx markdown-pptx deck.md deck.pptx --force --json
 
 ## Handle Results
 
-Prefer `--json` and parse the response. On success, report the absolute output path and slide count. On failure, use the structured error code and message to correct the input; do not repeat the same failing command unchanged.
+Prefer `--json` and parse the response. On success, report the absolute output path and slide count. On failure, use the structured error code and message to correct the input. Do not repeat the same failing command unchanged.
 
 Useful discovery and metadata commands are:
 

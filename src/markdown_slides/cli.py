@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TextIO
 
 from markdown_slides import __version__
-from markdown_slides.assets import default_template_path, list_color_scheme_names, load_syntax_payload
+from markdown_slides.assets import default_template_path, list_color_scheme_names, load_examples, load_syntax_payload
 from markdown_slides.errors import EXIT_INTERNAL, InputError, MarkdownSlidesError, UsageError
 from markdown_slides.models import Background, Deck
 from markdown_slides.parser import parse_deck
@@ -103,6 +103,13 @@ def build_parser(*, platform: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--list-layouts", action="store_true", help="List layouts on the selected template master.")
     parser.add_argument("--list-color-schemes", action="store_true", help="List built-in Office color schemes.")
     parser.add_argument("--syntax", action="store_true", help="Print the supported input syntax.")
+    parser.add_argument(
+        "--examples",
+        nargs="?",
+        const="all",
+        metavar="NAME",
+        help="Print authoring examples. Use 'list' for topics or a topic name for raw Markdown.",
+    )
     parser.add_argument("--about", action="store_true", help="Show project metadata and exit.")
     parser.add_argument("--version", action="store_true", help="Show the installed version and exit.")
     return parser
@@ -132,6 +139,7 @@ Happy path:
 
 Inspection:
   {PROGRAM_NAME} --syntax [--json]
+  {PROGRAM_NAME} --examples [NAME|list] [--json]
   {PROGRAM_NAME} --list-color-schemes [--json]
   {PROGRAM_NAME} --list-masters [--template theme.pptx] [--json]
   {PROGRAM_NAME} --list-layouts [--template theme.pptx] [--master MASTER] [--json]
@@ -305,10 +313,43 @@ def _run(args: argparse.Namespace, *, stdin: TextIO, stdout: TextIO) -> int:
         "list_layouts": args.list_layouts,
         "list_color_schemes": args.list_color_schemes,
         "syntax": args.syntax,
+        "examples": args.examples is not None,
     }
     selected = [name for name, enabled in inspection_modes.items() if enabled]
     if len(selected) > 1:
-        raise UsageError("--list-masters, --list-layouts, --list-color-schemes, and --syntax are mutually exclusive.")
+        raise UsageError(
+            "--list-masters, --list-layouts, --list-color-schemes, --syntax, and --examples are mutually exclusive."
+        )
+
+    if args.examples is not None:
+        _validate_inspection_args(args, allowed={"json", "examples"})
+        examples = load_examples()
+        if args.examples not in {"all", "list"}:
+            examples = [item for item in examples if item["id"] == args.examples]
+            if not examples:
+                raise UsageError(f"Unknown example '{args.examples}'. Use --examples list to see topic names.")
+        if args.json:
+            entries = (
+                examples
+                if args.examples != "list"
+                else [{key: value for key, value in item.items() if key != "markdown"} for item in examples]
+            )
+            stdout.write(json.dumps({"ok": True, "mode": "examples", "examples": entries}, indent=2) + "\n")
+        elif args.examples == "list":
+            stdout.write("".join(f"{item['id']}: {item['description']}\n" for item in examples))
+        elif args.examples != "all":
+            stdout.write(examples[0]["markdown"])
+        else:
+            stdout.write(
+                "# Markdown PPTX authoring examples\n\n"
+                "Each example is a separate complete document. "
+                "Use --examples NAME to print its raw Markdown.\n\n"
+            )
+            for item in examples:
+                stdout.write(f"## {item['id']}\n\n{item['description']}\n\n")
+                stdout.write(f"Requirements: {item['requirements']}\n\n")
+                stdout.write(f"`````markdown\n{item['markdown']}`````\n\n")
+        return 0
 
     if args.list_color_schemes:
         _validate_inspection_args(args, allowed={"json", "list_color_schemes"})
@@ -491,7 +532,9 @@ def _validate_inspection_args(args: argparse.Namespace, *, allowed: set[str]) ->
         conflicting.append(labels.get(name, f"--{name.replace('_', '-')}"))
     if conflicting:
         mode = next(
-            name for name in allowed if name in {"list_masters", "list_layouts", "list_color_schemes", "syntax"}
+            name
+            for name in allowed
+            if name in {"list_masters", "list_layouts", "list_color_schemes", "syntax", "examples"}
         )
         raise UsageError(f"--{mode.replace('_', '-')} cannot be combined with: {', '.join(conflicting)}")
 
@@ -593,6 +636,8 @@ def _format_syntax(payload: dict[str, object]) -> str:
         f"layout values: {', '.join(payload['layout_values'])}",
         f"table options: {', '.join(table_options['defaults'])}",
         f"table option defaults: {json.dumps(table_options['defaults'])}",
+        f"Two Content: {payload['two_content_syntax']}",
+        "Authoring examples: --examples [NAME|list] [--json]",
         f"Supported markdown: {', '.join(payload['supported_markdown'])}",
         f"Unsupported markdown: {', '.join(payload['unsupported_markdown'])}",
         f"Theme color syntax: {payload['theme_color_syntax']}",

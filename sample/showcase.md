@@ -299,6 +299,43 @@ notes: |
   This slide intentionally demonstrates the Blank layout.
 ---
 
+# Two content areas
+---
+layout: Two Content
+notes: A single top-level thematic break separates the left and right placeholders.
+---
+
+## First option
+
+- Small initial scope
+- Quick feedback
+
+***
+
+## Second option
+
+- Broader initial scope
+- More preparation
+
+# Text beside a table
+---
+layout: Two Content
+table:
+  first_column: true
+---
+
+## Progress
+
+- [x] Design agreed
+- [ ] Delivery scheduled
+
+***
+
+| Milestone | Status |
+| --- | --- |
+| Design | Complete |
+| Delivery | Planned |
+
 # Markdown in. Editable PowerPoint out.
 ---
 layout: Title Slide
