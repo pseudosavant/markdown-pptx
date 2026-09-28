@@ -39,6 +39,7 @@ from markdown_slides.models import (
     TableOptions,
     normalize_layout_name,
 )
+from markdown_slides.video import DEFAULT_MAX_REMOTE_VIDEO_MB, VideoDownloader, render_video
 
 TITLE_PLACEHOLDERS = {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}
 SUBTITLE_PLACEHOLDERS = {PP_PLACEHOLDER.SUBTITLE, PP_PLACEHOLDER.BODY}
@@ -95,6 +96,8 @@ def render_pptx(
     base_dir: Path,
     downloader: Downloader | None = None,
     allow_remote_images: bool = True,
+    allow_remote_videos: bool = True,
+    max_remote_video_mb: int = DEFAULT_MAX_REMOTE_VIDEO_MB,
     master: int | str | None = None,
     report: dict[str, object] | None = None,
 ) -> Path:
@@ -115,6 +118,7 @@ def render_pptx(
     code_analyzer = CodeBackgroundAnalyzer((presentation.slide_width, presentation.slide_height))
     owns_downloader = downloader is None
     downloader = downloader or Downloader(enabled=allow_remote_images)
+    video_downloader = VideoDownloader(enabled=allow_remote_videos, max_mb=max_remote_video_mb)
     original_downloader_enabled = downloader.enabled
     if not allow_remote_images:
         downloader.enabled = False
@@ -163,6 +167,7 @@ def render_pptx(
                 preserve_template_paragraph_formatting=preserve_template_paragraph_formatting,
                 base_dir=base_dir,
                 downloader=downloader,
+                video_downloader=video_downloader,
                 code_analyzer=code_analyzer,
             )
             _render_notes(slide, slide_spec)
@@ -180,6 +185,7 @@ def render_pptx(
                 report["code_highlighting"] = code_analyzer.reports
     finally:
         code_analyzer.close()
+        video_downloader.close()
         if owns_downloader:
             downloader.close()
         else:
@@ -530,6 +536,7 @@ def _render_body(
     preserve_template_paragraph_formatting: bool,
     base_dir: Path,
     downloader: Downloader,
+    video_downloader: VideoDownloader,
     code_analyzer: CodeBackgroundAnalyzer,
 ) -> None:
     body = slide_spec.body
@@ -550,6 +557,7 @@ def _render_body(
                 preserve_template_paragraph_formatting=preserve_template_paragraph_formatting,
                 base_dir=base_dir,
                 downloader=downloader,
+                video_downloader=video_downloader,
                 code_analyzer=code_analyzer,
             )
         return
@@ -589,6 +597,7 @@ def _render_body(
         preserve_template_paragraph_formatting=preserve_template_paragraph_formatting,
         base_dir=base_dir,
         downloader=downloader,
+        video_downloader=video_downloader,
         code_analyzer=code_analyzer,
     )
 
@@ -605,6 +614,7 @@ def _render_content_area(
     preserve_template_paragraph_formatting: bool,
     base_dir: Path,
     downloader: Downloader,
+    video_downloader: VideoDownloader,
     code_analyzer: CodeBackgroundAnalyzer,
 ) -> None:
     placeholder.text_frame.clear()
@@ -637,6 +647,9 @@ def _render_content_area(
             contain=True,
             name="MarkdownSlidesImage",
         )
+        return
+    if body.videos:
+        render_video(slide, placeholder, body.videos[0], base_dir=base_dir, downloader=video_downloader)
         return
     if body.tables:
         _render_table(slide, placeholder, body.tables[0], slide_spec.table_options, deck)

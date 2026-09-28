@@ -3,20 +3,38 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
+from urllib.parse import parse_qs, unquote, urlsplit
 
+import yaml
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 from mdit_py_plugins.subscript import sub_plugin
 from mdit_py_plugins.superscript import superscript_plugin
 
 from markdown_slides.errors import ParseError, UnsupportedContentError
-from markdown_slides.models import BodyContent, ImageBlock, InlineText, ListContext, Paragraph, TableBlock
+from markdown_slides.models import BodyContent, ImageBlock, InlineText, ListContext, Paragraph, TableBlock, VideoBlock
 
 MD = MarkdownIt("commonmark").enable(["table", "strikethrough"])
 MD.use(sub_plugin)
 MD.use(superscript_plugin)
 TASK_ITEM_RE = re.compile(r"^\[[ xX]\](?:\s+|$)")
 FOOTNOTE_RE = re.compile(r"\[\^[^\]\r\n]+\](?::)?")
+VIDEO_KEYS = {"width", "aspect_ratio", "align", "valign", "start", "fullscreen", "loop", "mute"}
+YOUTUBE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+VIDEO_COMMENT_RE = re.compile(r"^<!-- markdown-pptx:video\b")
+
+
+class _VideoSettingsLoader(yaml.SafeLoader):
+    def construct_mapping(self, node, deep=False):
+        values = {}
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if key in values:
+                raise yaml.constructor.ConstructorError(
+                    None, None, f"Duplicate video setting: {key}", key_node.start_mark
+                )
+            values[key] = self.construct_object(value_node, deep=deep)
+        return values
 
 
 class _HTMLText(HTMLParser):
@@ -165,7 +183,16 @@ def _parse_block_sequence(
                 list_depth=list_depth,
             )
         elif token.type == "fence":
-            _parse_fence(token, content, quote_depth=quote_depth)
+            if re.match(r"^video(?:\s|$)", token.info.strip(), re.IGNORECASE):
+                raise _token_error(
+                    token,
+                    "Video fences are unsupported. Use a standalone Markdown link.",
+                    source_name,
+                    slide_index,
+                    base_line,
+                )
+            else:
+                _parse_fence(token, content, quote_depth=quote_depth)
             cursor.index += 1
         elif token.type == "code_block":
             _parse_fence(token, content, quote_depth=quote_depth)
@@ -175,6 +202,14 @@ def _parse_block_sequence(
                 _parse_table(cursor, source_name=source_name, slide_index=slide_index, base_line=base_line)
             )
         elif token.type in {"html_block", "html_inline"}:
+            if VIDEO_COMMENT_RE.match(token.content.lstrip()):
+                raise _token_error(
+                    token,
+                    "Video settings must immediately follow a standalone video link.",
+                    source_name,
+                    slide_index,
+                    base_line,
+                )
             visible = _html_text(token.content)
             if visible:
                 content.paragraphs.append(
@@ -234,6 +269,13 @@ def _parse_paragraph(
     quote_depth: int = 0,
 ) -> None:
     inline = cursor.tokens[cursor.index + 1]
+    if any(
+        child.type == "html_inline" and VIDEO_COMMENT_RE.match(child.content.lstrip())
+        for child in inline.children or []
+    ):
+        raise _token_error(
+            inline, "Video settings must be a separate block after the video link.", source_name, slide_index, base_line
+        )
     non_space_children = [
         child
         for child in (inline.children or [])
@@ -249,6 +291,11 @@ def _parse_paragraph(
         "image",
         "link_close",
     ]:
+        source = non_space_children[0].attrGet("href") or ""
+        if quote_depth == 0 and _video_candidate(source) and not _youtube_candidate(source):
+            poster = non_space_children[1].attrGet("src") or ""
+            content.videos.append(_video_from_link(cursor, source, poster, source_name, slide_index, base_line))
+            return
         content.images.append(
             _image_block(
                 non_space_children[1],
@@ -258,6 +305,17 @@ def _parse_paragraph(
         )
         cursor.index += 3
         return
+    if (
+        quote_depth == 0
+        and len(non_space_children) >= 3
+        and non_space_children[0].type == "link_open"
+        and non_space_children[-1].type == "link_close"
+        and not any(child.type in {"link_open", "link_close", "image"} for child in non_space_children[1:-1])
+    ):
+        source = non_space_children[0].attrGet("href") or ""
+        if _video_candidate(source):
+            content.videos.append(_video_from_link(cursor, source, None, source_name, slide_index, base_line))
+            return
     if any(child.type == "image" for child in non_space_children):
         raise _unsupported_token_error(
             inline,
@@ -272,6 +330,32 @@ def _parse_paragraph(
             Paragraph(kind="blockquote" if quote_depth else "paragraph", fragments=fragments, quote_depth=quote_depth)
         )
     cursor.index += 3
+
+
+def _youtube_candidate(source: str) -> bool:
+    host = (urlsplit(source).hostname or "").lower()
+    return host in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"}
+
+
+def _video_candidate(source: str) -> bool:
+    if _youtube_candidate(source):
+        return True
+    windows_path = bool(re.match(r"^[A-Za-z]:[\\/]", source) or source.startswith("\\\\"))
+    return source.lower().endswith(".mp4") if windows_path else urlsplit(source).path.lower().endswith(".mp4")
+
+
+def _video_from_link(
+    cursor: _Cursor, source: str, poster: str | None, source_name: str, slide_index: int, base_line: int
+) -> VideoBlock:
+    link_token = cursor.tokens[cursor.index]
+    cursor.index += 3
+    settings_token = None
+    if cursor.index < len(cursor.tokens):
+        candidate = cursor.tokens[cursor.index]
+        if candidate.type == "html_block" and VIDEO_COMMENT_RE.match(candidate.content.lstrip()):
+            settings_token = candidate
+            cursor.index += 1
+    return _parse_video(source, poster, settings_token, link_token, source_name, slide_index, base_line)
 
 
 def _image_block(token: Token, *, href: str | None = None, link_title: str | None = None) -> ImageBlock:
@@ -335,6 +419,14 @@ def _parse_list(
         while cursor.index < len(cursor.tokens) and cursor.tokens[cursor.index].type != "list_item_close":
             item_token = cursor.tokens[cursor.index]
             if item_token.type in {"html_block", "html_inline"}:
+                if VIDEO_COMMENT_RE.match(item_token.content.lstrip()):
+                    raise _token_error(
+                        item_token,
+                        "Video settings must follow a top-level video link.",
+                        source_name,
+                        slide_index,
+                        base_line,
+                    )
                 visible = _html_text(item_token.content)
                 if visible:
                     content.paragraphs.append(
@@ -427,6 +519,16 @@ def _parse_list(
                     nested.paragraphs[0].list_context = context
                     content.paragraphs.extend(nested.paragraphs)
                 elif item_token.type in {"fence", "code_block"}:
+                    if item_token.type == "fence" and re.match(
+                        r"^video(?:\s|$)", item_token.info.strip(), re.IGNORECASE
+                    ):
+                        raise _token_error(
+                            item_token,
+                            "Video fences are unsupported. Use a standalone Markdown link.",
+                            source_name,
+                            slide_index,
+                            base_line,
+                        )
                     nested = BodyContent()
                     _parse_fence(item_token, nested, quote_depth=quote_depth)
                     nested.paragraphs[0].list_context = context
@@ -479,7 +581,7 @@ def _parse_blockquote(
         quote_depth=quote_depth + 1,
         list_depth=list_depth,
     )
-    if nested.images or nested.tables:
+    if nested.images or nested.tables or nested.videos:
         raise UnsupportedContentError(
             "Blockquotes only support text-flow content.",
             slide_index=slide_index,
@@ -499,6 +601,125 @@ def _parse_fence(token: Token, content: BodyContent, *, quote_depth: int = 0) ->
             quote_depth=quote_depth,
             code_language=language,
         )
+    )
+
+
+def _parse_video(
+    source: str,
+    poster: str | None,
+    settings_token: Token | None,
+    link_token: Token,
+    source_name: str,
+    slide_index: int,
+    base_line: int,
+) -> VideoBlock:
+    token = settings_token or link_token
+
+    def fail(message: str) -> ParseError:
+        return _token_error(token, message, source_name, slide_index, base_line)
+
+    raw_settings = ""
+    if settings_token is not None:
+        lines = settings_token.content.splitlines()
+        if len(lines) < 2 or lines[0].strip() != "<!-- markdown-pptx:video" or lines[-1].strip() != "-->":
+            raise fail("Video settings comment must open and close on separate lines.")
+        if any("-->" in line for line in lines[1:-1]):
+            raise fail("Video settings comment cannot contain an early closing marker.")
+        raw_settings = "\n".join(lines[1:-1])
+    try:
+        data = yaml.load(raw_settings, Loader=_VideoSettingsLoader) if raw_settings.strip() else {}
+    except yaml.YAMLError as exc:
+        raise fail(f"Invalid video settings: {exc}") from exc
+    if not isinstance(data, dict) or any(not isinstance(key, str) for key in data):
+        raise fail("Video settings comment must contain a mapping of settings.")
+    unknown = set(data) - VIDEO_KEYS
+    if unknown:
+        raise fail(f"Unknown video setting: {', '.join(sorted(unknown))}.")
+    source = source.strip()
+    windows_path = bool(re.match(r"^[A-Za-z]:[\\/]", source) or source.startswith("\\\\"))
+    parsed = urlsplit(source) if not windows_path else urlsplit("")
+    host = (parsed.hostname or "").lower()
+    youtube = host in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"}
+    if youtube:
+        if parsed.scheme != "https":
+            raise fail("YouTube video source must use HTTPS.")
+        video_id = (
+            parsed.path.strip("/")
+            if host.endswith("youtu.be")
+            else (
+                parse_qs(parsed.query).get("v", [""])[0]
+                if parsed.path == "/watch"
+                else parsed.path.split("/")[2]
+                if parsed.path.startswith(("/embed/", "/shorts/")) and len(parsed.path.split("/")) > 2
+                else ""
+            )
+        )
+        if not YOUTUBE_ID_RE.fullmatch(video_id):
+            raise fail("YouTube source must contain a valid video ID.")
+        unsupported = set(data) & {"start", "fullscreen", "loop", "mute"}
+        if unsupported:
+            raise fail(f"YouTube video does not support setting: {', '.join(sorted(unsupported))}.")
+        source = f"https://www.youtube.com/embed/{video_id}"
+        kind = "youtube"
+    elif parsed.scheme or parsed.netloc:
+        if parsed.scheme != "https" or not parsed.netloc or not parsed.path.lower().endswith(".mp4"):
+            raise fail("Remote video source must be an HTTPS MP4 URL.")
+        kind = "remote_mp4"
+    else:
+        if not source.lower().endswith(".mp4"):
+            raise fail("Local video source must be an MP4 file.")
+        source = unquote(source)
+        kind = "local_mp4"
+    width = data.get("width", "auto")
+    if not isinstance(width, str) or not (
+        width == "auto" or re.fullmatch(r"(?:\d+(?:\.\d+)?)%|(?:\d+(?:\.\d+)?)in", width)
+    ):
+        raise fail("Video width must be auto, a percentage such as 75%, or inches such as 6in.")
+    if width != "auto" and float(width[:-1] if width.endswith("%") else width[:-2]) <= 0:
+        raise fail("Video width must be greater than zero.")
+    aspect = data.get("aspect_ratio")
+    aspect_value = None
+    if aspect is not None:
+        if not isinstance(aspect, str) or not re.fullmatch(r"\d+(?:\.\d+)?:\d+(?:\.\d+)?", aspect):
+            raise fail("Video aspect_ratio must be a positive ratio such as 16:9.")
+        numerator, denominator = (float(part) for part in aspect.split(":"))
+        if numerator <= 0 or denominator <= 0:
+            raise fail("Video aspect_ratio values must be greater than zero.")
+        aspect_value = numerator / denominator
+    align = data.get("align", "center")
+    valign = data.get("valign", "middle")
+    if align not in {"left", "center", "right"} or valign not in {"top", "middle", "bottom"}:
+        raise fail("Video align must be left, center, or right. Valign must be top, middle, or bottom.")
+    if poster is not None and (
+        not isinstance(poster, str)
+        or not poster.strip()
+        or (urlsplit(poster).scheme and not re.match(r"^[A-Za-z]:[\\/]", poster))
+    ):
+        raise fail("Video poster must be a local image path.")
+    if poster is not None:
+        poster = unquote(poster)
+    start = data.get("start", "click")
+    if start not in {"automatic", "click"}:
+        raise fail("Video start must be automatic or click.")
+    for key in ("fullscreen", "loop", "mute"):
+        if key in data and not isinstance(data[key], bool):
+            raise fail(f"Video {key} must be true or false.")
+        if key in data:
+            raw = re.search(rf"^\s*{key}\s*:\s*(.*?)\s*$", raw_settings, re.MULTILINE)
+            if raw is None or raw.group(1) not in {"true", "false"}:
+                raise fail(f"Video {key} must be true or false.")
+    return VideoBlock(
+        source,
+        kind,
+        width,
+        aspect_value,
+        align,
+        valign,
+        poster,
+        start,
+        data.get("fullscreen", False),
+        data.get("loop", False),
+        data.get("mute", False),
     )
 
 

@@ -49,7 +49,19 @@ def test_help_mentions_agent_friendly_modes() -> None:
     assert "--ignore-slide-colors" in help_text
     assert "skill install" in help_text
     assert "--no-remote-images" in help_text
+    assert "--no-remote-videos" in help_text
+    assert "--max-remote-video-mb" in help_text
     assert "markdown-pptx deck.md" in help_text
+
+
+def test_remote_video_limit_must_be_positive(tmp_path: Path) -> None:
+    deck = tmp_path / "deck.md"
+    deck.write_text("# Slide\n\nBody\n", encoding="utf-8")
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    result = main([str(deck), "--max-remote-video-mb", "0"], stdout=stdout, stderr=stderr)
+    assert result == 2
+    assert "--max-remote-video-mb must be greater than zero" in stderr.getvalue()
 
 
 def test_help_shows_powerpoint_image_export_only_on_windows() -> None:
@@ -108,10 +120,12 @@ def test_syntax_json_output() -> None:
     payload = json.loads(stdout.getvalue())
     assert exit_code == 0
     assert payload["ok"] is True
-    assert "document_front_matter_keys" in payload
-    assert "slide_front_matter_keys" in payload
-    assert "master" in payload["slide_front_matter_keys"]
-    assert "table" in payload["slide_front_matter_keys"]
+    assert "deck_metadata_keys" in payload
+    assert "slide_metadata_keys" in payload
+    assert "master" in payload["slide_metadata_keys"]
+    assert "table" in payload["slide_metadata_keys"]
+    assert "<!-- markdown-pptx:deck" in payload["metadata_comment_syntax"]["deck"]
+    assert "<!-- markdown-pptx:slide" in payload["metadata_comment_syntax"]["slide"]
     assert "1-based" in payload["master_selector_syntax"]
     assert payload["table_options"] == {
         "scope": "Slide-level options applied to every table on the slide. Require at least one pipe table.",
@@ -138,6 +152,8 @@ def test_syntax_json_output() -> None:
     assert "task_lists_with_static_checkboxes" in payload["supported_markdown"]
     assert "fenced_code_syntax_coloring" in payload["supported_markdown"]
     assert "standalone_linked_images" in payload["supported_markdown"]
+    assert "embedded_h264_mp4_videos" in payload["supported_markdown"]
+    assert payload["video_syntax"]["mp4_only"]["start"].startswith("click or automatic")
     assert "horizontal_rules_outside_two_content_separator" in payload["unsupported_markdown"]
     assert payload["theme_color_syntax"] == (
         "Use var(--slot-name) in text colors and backgrounds, for example var(--accent-1) or var(--dark-1)."
@@ -172,6 +188,21 @@ def test_syntax_json_output() -> None:
         "var(--followed-hyperlink)",
     ]
     assert stderr.getvalue() == ""
+
+
+def test_examples_use_metadata_comments() -> None:
+    from markdown_slides.assets import load_examples
+    from markdown_slides.parser import parse_deck
+
+    examples = load_examples()
+    for example in examples:
+        source = example["markdown"]
+        assert not source.startswith("---\n")
+        parse_deck(source, input_path=None, source_name=example["id"])
+
+    stdout = io.StringIO()
+    assert main(["--examples", "metadata"], stdout=stdout, stderr=io.StringIO()) == 0
+    assert stdout.getvalue().startswith("<!-- markdown-pptx:deck\n")
 
 
 def test_syntax_plain_output_lists_all_theme_color_variables() -> None:
@@ -630,6 +661,8 @@ def test_render_json_output(tmp_path: Path) -> None:
     assert [item["index"] for item in payload["masters_used"]] == [1]
     assert payload["ignore_document_colors"] is False
     assert payload["ignore_slide_colors"] is False
+    assert payload["remote_videos"] is True
+    assert payload["max_remote_video_mb"] == 100
     assert Path(payload["output"]).exists()
     assert stderr.getvalue() == ""
 
@@ -729,29 +762,29 @@ def test_image_export_failure_reports_retained_pptx_in_json(tmp_path: Path, monk
 
 def test_apply_color_ignore_flags_keeps_image_backgrounds() -> None:
     deck = parse_deck(
-        """---
+        """<!-- markdown-pptx:deck
 background: "linear-gradient(90deg, #112233 0%, #445566 100%)"
 title_color: "#010203"
 body_color: "#040506"
 color_scheme:
   preset: Office
----
+-->
 
 # Slide A
----
+<!-- markdown-pptx:slide
 background: "url('./bg.png')"
 title_color: "#111111"
 body_color: "#222222"
----
+-->
 
 Body
 
 # Slide B
----
+<!-- markdown-pptx:slide
 background: "#778899"
 title_color: "#333333"
 body_color: "#444444"
----
+-->
 
 Body
 """,
@@ -795,19 +828,19 @@ def test_ignore_document_colors_preserves_template_theme_and_slide_overrides(tmp
 
     deck = tmp_path / "deck.md"
     deck.write_text(
-        """---
+        """<!-- markdown-pptx:deck
 color_scheme:
   preset: Blue Warm
 title_color: "#112233"
 body_color: "#445566"
----
+-->
 
 # Slide
----
+<!-- markdown-pptx:slide
 layout: Title and Content
 title_color: "#778899"
 body_color: "#AABBCC"
----
+-->
 
 Body
 """,
@@ -843,17 +876,17 @@ Body
 def test_ignore_slide_colors_keeps_document_colors(tmp_path: Path) -> None:
     deck = tmp_path / "deck.md"
     deck.write_text(
-        """---
+        """<!-- markdown-pptx:deck
 title_color: "#112233"
 body_color: "#445566"
----
+-->
 
 # Slide
----
+<!-- markdown-pptx:slide
 layout: Title and Content
 title_color: "#778899"
 body_color: "#AABBCC"
----
+-->
 
 Body
 """,

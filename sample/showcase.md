@@ -1,4 +1,4 @@
----
+<!-- markdown-pptx:deck
 aspect_ratio: "16:9"
 fonts:
   body: Aptos
@@ -20,12 +20,12 @@ color_scheme:
 title_color: "var(--accent-6)"
 body_color: "var(--dark-1)"
 background: "linear-gradient(90deg, #F3FAFF 0%, #E6F4FF 54%, #FFE7BF 100%)"
----
+-->
 
 # markdown-pptx
----
+<!-- markdown-pptx:slide
 layout: Title Slide
----
+-->
 
 Markdown in. Editable PowerPoint out.
 
@@ -37,9 +37,9 @@ It uses real PowerPoint layouts and placeholders, so the output stays easy to ed
 
 # How the format works
 
-An optional document front matter block sets deck-wide defaults such as aspect ratio, fonts, colors, and background behavior.
+An optional `markdown-pptx:deck` comment sets deck-wide defaults such as aspect ratio, fonts, colors, and background behavior.
 
-Each ATX `# H1` or Setext H1 starts a new slide. Optional slide front matter appears immediately after the heading. Everything until the next H1 belongs to that slide.
+Each ATX `# H1` or Setext H1 starts a new slide. An optional `markdown-pptx:slide` comment appears immediately after the heading. Everything until the next H1 belongs to that slide.
 
 # Basic CLI usage
 
@@ -56,10 +56,10 @@ Use `--syntax` to print the supported deck format, `--list-masters` to inspect a
 Add `--json` for structured results. Master and layout inspection report names, indices, placeholder inventory, and compatibility so people and coding agents can discover valid inputs before generating a deck.
 
 # Master and layout selection
----
+<!-- markdown-pptx:slide
 master: "Showcase Alternate"
 layout: Title and Content
----
+-->
 
 This slide uses the template's `Showcase Alternate` master while the rest of the deck defaults to master 1. Templates keep every embedded master in the output.
 
@@ -78,57 +78,57 @@ Markdown can set document-level and slide-level colors with `color_scheme`, `tit
 When a template already has the colors you want, `--ignore-document-colors` and `--ignore-slide-colors` let the template remain the source of truth for those color settings.
 
 # Supported color formats
----
+<!-- markdown-pptx:slide
 title_color: "hsl(204, 71%, 39%)"
 body_color: "rgb(16, 38, 63)"
 background: "#DEF"
----
+-->
 
 Colors accept short or long hex, RGB, HSL, and PowerPoint theme references such as `var(--accent-1)`.
 
 # Every PowerPoint theme color
----
+<!-- markdown-pptx:slide
 layout: Title Only
 title_color: "var(--light-1)"
 background: "linear-gradient(270deg, var(--dark-1) 0%, var(--dark-1) 20%, var(--light-1) 20%, var(--light-1) 27.273%, var(--dark-2) 27.273%, var(--dark-2) 34.545%, var(--light-2) 34.545%, var(--light-2) 41.818%, var(--accent-1) 41.818%, var(--accent-1) 49.091%, var(--accent-2) 49.091%, var(--accent-2) 56.364%, var(--accent-3) 56.364%, var(--accent-3) 63.636%, var(--accent-4) 63.636%, var(--accent-4) 70.909%, var(--accent-5) 70.909%, var(--accent-5) 78.182%, var(--accent-6) 78.182%, var(--accent-6) 85.455%, var(--hyperlink) 85.455%, var(--hyperlink) 92.727%, var(--followed-hyperlink) 92.727%, var(--followed-hyperlink) 100%)"
 notes: |
   This slide uses every theme color as a hard band in the background.
   From top to bottom: Dark 1, Light 1, Dark 2, Light 2, Accent 1 through Accent 6, Hyperlink, and Followed Hyperlink.
----
+-->
 
 # Feature examples
----
+<!-- markdown-pptx:slide
 layout: Section Header
----
+-->
 
 Each slide after this one isolates a single `markdown-pptx` feature.
 
 # Title Slide layout
----
+<!-- markdown-pptx:slide
 layout: Title Slide
----
+-->
 
 This slide uses the Title Slide layout.
 
 # Section Header layout
----
+<!-- markdown-pptx:slide
 layout: Section Header
----
+-->
 
 This slide uses the Section Header layout.
 
 # Title and Content layout
----
+<!-- markdown-pptx:slide
 master: 1
 layout: Title and Content
----
+-->
 
 This slide explicitly uses master 1 and its Title and Content layout.
 
 # Title Only layout
----
+<!-- markdown-pptx:slide
 layout: Title Only
----
+-->
 
 # Body text with hyperlinks
 
@@ -199,7 +199,7 @@ An H1 underline can start a slide without an ATX marker.
 2. Finish the sequence
 
 # Pipe table
----
+<!-- markdown-pptx:slide
 table:
   header_row: true
   total_row: true
@@ -207,7 +207,7 @@ table:
   last_column: true
   banded_rows: true
   banded_columns: true
----
+-->
 
 | Markdown input | PowerPoint result |
 | --- | --- |
@@ -232,9 +232,9 @@ uvx markdown-pptx sample/showcase.md sample/showcase.pptx --template sample/show
 ```
 
 # Syntax highlighting: Python
----
+<!-- markdown-pptx:slide
 notes: Language labels select syntax coloring. The highlighted code remains editable PowerPoint text.
----
+-->
 
 ```python
 # Summarize completed work
@@ -249,9 +249,9 @@ if len(tasks) >= 3:
 ```
 
 # Syntax highlighting: TypeScript
----
+<!-- markdown-pptx:slide
 notes: TypeScript highlights type declarations, keywords, strings, and numeric values.
----
+-->
 
 ```typescript
 // Calculate the remaining work
@@ -266,9 +266,9 @@ console.log(`Remaining: ${remaining(launch)}`)
 ```
 
 # Syntax highlighting: HTML
----
+<!-- markdown-pptx:slide
 notes: HTML highlights tags, attribute names, quoted values, and comments.
----
+-->
 
 ```html
 <!-- A compact project card -->
@@ -284,9 +284,9 @@ notes: HTML highlights tags, attribute names, quoted values, and comments.
 ```
 
 # Syntax highlighting: CSS
----
+<!-- markdown-pptx:slide
 notes: CSS highlights selectors, property names, color values, and units.
----
+-->
 
 ```css
 /* Style the project card */
@@ -306,74 +306,127 @@ notes: CSS highlights selectors, property names, color values, and units.
 [![Local markdown-pptx sample image](./showcase-local.png "Showcase image")](https://github.com/pseudosavant/markdown-pptx)
 
 # Remote image
----
+<!-- markdown-pptx:slide
 notes: |
   This slide demonstrates downloading a remote image during rendering.
   [Sources]
   - https://raw.githubusercontent.com/github/explore/main/topics/python/python.png (Python logo)
----
+-->
 
 ![Remote Python logo](https://raw.githubusercontent.com/github/explore/main/topics/python/python.png)
 
+# Local video: Big Buck Bunny
+<!-- markdown-pptx:slide
+notes: |
+  The local MP4 is embedded in this PowerPoint file. Click Next to start playback.
+  The slide stays in place when the clip ends.
+  The preview image is generated from the first video frame.
+  Clip: (c) copyright 2008, Blender Foundation / www.bigbuckbunny.org
+  Licensed under Creative Commons Attribution 3.0.
+-->
+
+[Play Big Buck Bunny](big-buck-bunny-clip.mp4)
+
+<!-- markdown-pptx:video
+width: 88%
+-->
+
+# Local video: automatic fullscreen playback
+<!-- markdown-pptx:slide
+notes: |
+  The embedded Big Buck Bunny clip starts when this slide appears.
+  It fills the screen, loops, and plays with sound muted.
+  Advance the slide manually when you are ready to continue.
+  Clip and poster: (c) copyright 2008, Blender Foundation / www.bigbuckbunny.org
+  Licensed under Creative Commons Attribution 3.0.
+-->
+
+[![Play Big Buck Bunny](big-buck-bunny-poster.png)](big-buck-bunny-clip.mp4)
+
+<!-- markdown-pptx:video
+start: automatic
+fullscreen: true
+loop: true
+mute: true
+-->
+
+# YouTube video: Big Buck Bunny
+<!-- markdown-pptx:slide
+layout: Two Content
+notes: |
+  This slide uses an online YouTube media object. Playback needs internet access.
+  The film is (c) copyright 2008, Blender Foundation / www.bigbuckbunny.org
+-->
+
+## Online playback
+
+The video on the right is linked to YouTube.
+
+Click the video to play the full film in PowerPoint.
+
+***
+
+[Watch Big Buck Bunny on YouTube](https://www.youtube.com/watch?v=aqz-KE-bpKQ)
+
 # Background color
----
+<!-- markdown-pptx:slide
 background: "#EAF3FF"
----
+-->
 
 This slide uses a solid slide background color.
 
 # Transparent background and hidden master graphics
----
+<!-- markdown-pptx:slide
 master: 2
 layout: Title and Content
 background: none
 hide_background_graphics: true
----
+-->
 
 This slide removes its slide-level fill and hides the orange accent graphic inherited from the alternate master.
 
 #
----
+<!-- markdown-pptx:slide
 layout: Blank
 background: "url('./showcase-local.png')"
 notes: This slide demonstrates a full-slide background image on the Blank layout.
----
+-->
 
 # Linear gradient background
----
+<!-- markdown-pptx:slide
 background: "linear-gradient(90deg, var(--accent-2) 0%, var(--accent-3) 48%, var(--accent-4) 100%)"
----
+-->
 
 This slide uses a three-stop linear gradient background.
 
 # Radial gradient background
----
+<!-- markdown-pptx:slide
 background: "radial-gradient(circle, var(--accent-2) 0%, var(--accent-4) 58%, var(--light-1) 100%)"
----
+-->
 
 This slide uses a radial gradient background.
 
 # Slide colors override document colors
----
+<!-- markdown-pptx:slide
 title_color: "var(--light-1)"
 body_color: "var(--light-1)"
 background: "linear-gradient(90deg, var(--accent-1) 0%, var(--accent-4) 100%)"
----
+-->
 
 This slide overrides the document-level title and body colors.
 
 #
----
+<!-- markdown-pptx:slide
 layout: Blank
 notes: |
   This slide intentionally demonstrates the Blank layout.
----
+-->
 
 # Two content areas
----
+<!-- markdown-pptx:slide
 layout: Two Content
 notes: A single top-level thematic break separates the left and right placeholders.
----
+-->
 
 ## First option
 
@@ -388,11 +441,11 @@ notes: A single top-level thematic break separates the left and right placeholde
 - More preparation
 
 # Text beside a table
----
+<!-- markdown-pptx:slide
 layout: Two Content
 table:
   first_column: true
----
+-->
 
 ## Progress
 
@@ -407,11 +460,11 @@ table:
 | Delivery | Planned |
 
 # Theme syntax: dark colors
----
+<!-- markdown-pptx:slide
 code_highlighting: theme-dark
 background: "#FFFFFF"
 notes: Dark 1 supplies ordinary code. Accents 1, 2, and 3 supply keywords, values, and named tokens. Brightness is adjusted only as needed for 4.5 to 1 contrast.
----
+-->
 
 `code_highlighting: theme-dark` on a white background.
 
@@ -426,13 +479,13 @@ greet("PowerPoint")
 ```
 
 # Theme syntax: light colors
----
+<!-- markdown-pptx:slide
 code_highlighting: theme-light
 background: "#10263F"
 title_color: "#FFFFFF"
 body_color: "#FFFFFF"
 notes: Light 1 supplies ordinary code. The same accent slots are used with lighter variants where needed. Comments meet the same contrast target as other code.
----
+-->
 
 `code_highlighting: theme-light` on a navy background.
 
@@ -447,11 +500,11 @@ console.log(greet("PowerPoint"));
 ```
 
 # Theme syntax: a light gradient
----
+<!-- markdown-pptx:slide
 code_highlighting: theme-dark
 background: "linear-gradient(0deg, #FFFFFF 0%, #D8EBFF 100%)"
 notes: A 16 by 16 grid estimates the background range beneath the content placeholder. HTML tags use Accent 1, values use Accent 2, and attributes use Accent 3.
----
+-->
 
 The background range guides the brightness adjustments.
 
@@ -464,13 +517,13 @@ The background range guides the brightness adjustments.
 ```
 
 # Theme syntax: a dark gradient
----
+<!-- markdown-pptx:slide
 code_highlighting: theme-light
 background: "radial-gradient(circle, #254D70 0%, #102030 100%)"
 title_color: "#FFFFFF"
 body_color: "#FFFFFF"
 notes: A dark radial gradient demonstrates the light variant. Native theme references retain their slot and use brightness adjustments for the estimated background range.
----
+-->
 
 One palette is reused across all code blocks in this area.
 
@@ -485,9 +538,9 @@ One palette is reused across all code blocks in this area.
 ```
 
 # [Shared references][showcase-guide]
----
+<!-- markdown-pptx:slide
 notes: The title and body use a reference defined on a later slide. The optional link title becomes a ScreenTip in PowerPoint. Hover over a link in Slide Show view to see the tip.
----
+-->
 
 Read the [project guide][showcase-guide].
 
@@ -496,11 +549,11 @@ The same definition can supply links throughout the deck.
 [**Formatted** *links*](https://github.com/pseudosavant/markdown-pptx "Open the markdown-pptx project") retain their ScreenTips.
 
 # Code stays inside its list item
----
+<!-- markdown-pptx:slide
 code_highlighting: theme-dark
 background: "#FFFFFF"
 notes: The code block and result heading align with the parent list text. The HTML comment is omitted.
----
+-->
 
 1. Run the check
 
@@ -518,9 +571,9 @@ notes: The code block and result heading align with the parent list text. The HT
 2. Present the result
 
 # Numbering and reusable definitions
----
+<!-- markdown-pptx:slide
 notes: Zero is preserved with an editable text marker. Native numbering is used where PowerPoint supports it. The reference definition at the bottom is invisible and serves earlier slides.
----
+-->
 
 0. Prepare the content
 1. Render the presentation
@@ -531,8 +584,8 @@ Return to the [project guide][showcase-guide] for more examples.
 [showcase-guide]: https://github.com/pseudosavant/markdown-pptx "Read the markdown-pptx guide"
 
 # Markdown in. Editable PowerPoint out.
----
+<!-- markdown-pptx:slide
 layout: Title Slide
----
+-->
 
 Run `uvx markdown-pptx --help` to get started.

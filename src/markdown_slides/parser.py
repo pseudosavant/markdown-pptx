@@ -87,6 +87,8 @@ THEME_VAR_RE = re.compile(r"^var\(\s*--(?P<name>[a-z0-9-]+)\s*\)$", re.IGNORECAS
 SETEXT_H1_RE = re.compile(r"^[ ]{0,3}=+[ \t]*$")
 ATX_H1_RE = re.compile(r"^[ ]{0,3}#(?:[ \t]+.*|[ \t]*)$")
 FENCE_OPEN_RE = re.compile(r"^[ ]{0,3}(?P<marker>`{3,}|~{3,})(?P<info>.*)$")
+METADATA_OPEN_RE = re.compile(r"^[ ]{0,3}<!-- markdown-pptx:(?P<scope>deck|slide)[ \t]*$")
+METADATA_PREFIX_RE = re.compile(r"^[ ]{0,3}<!-- markdown-pptx:(?:deck|slide)\b")
 THEME_COLOR_VARS = {
     "dark-1": "dark_1",
     "light-1": "light_1",
@@ -190,11 +192,6 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
             line=raw_slide.line_number,
         )
         slide_text_colors = _parse_text_colors(raw_slide.config, line=raw_slide.line_number)
-        _reject_misplaced_slide_front_matter(
-            raw_slide.body_markdown.splitlines(),
-            base_line=raw_slide.body_line_number,
-            source_name=source_name,
-        )
         regions = parse_body_regions(
             raw_slide.body_markdown,
             two_content=normalized_layout == "Two Content",
@@ -358,8 +355,9 @@ def _parse_master_selector(
 def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, object], list[RawSlide], dict]:
     index = 0
     document_config: dict[str, object] = {}
-    if lines and lines[0].strip() == "---":
-        document_config, index = _parse_yaml_front_matter(lines, 0, DOCUMENT_KEYS, source_name=source_name)
+    _reject_legacy_front_matter(lines, index, DOCUMENT_KEYS, source_name=source_name)
+    if lines and _metadata_scope(lines[0]) == "deck":
+        document_config, index = _parse_metadata_comment(lines, 0, DOCUMENT_KEYS, source_name=source_name)
 
     slides: list[RawSlide] = []
     current_title: str | None = None
@@ -431,10 +429,23 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
             current_config = {}
             current_body = []
             index += 1 if atx else 2
-            if index < len(lines) and lines[index].strip() == "---":
-                current_config, index = _parse_yaml_front_matter(lines, index, SLIDE_KEYS, source_name=source_name)
+            _reject_legacy_front_matter(lines, index, SLIDE_KEYS, source_name=source_name)
+            if index < len(lines) and _metadata_scope(lines[index]) == "slide":
+                current_config, index = _parse_metadata_comment(lines, index, SLIDE_KEYS, source_name=source_name)
             current_body_line = index + 1
             continue
+        if not was_in_fence and fence is None and METADATA_PREFIX_RE.match(line):
+            scope = _metadata_scope(line)
+            raise ParseError(
+                "metadata_comment_placement" if scope else "invalid_metadata_comment",
+                (
+                    f"{scope.capitalize()} metadata comment is not in its allowed position."
+                    if scope
+                    else "Metadata comment opening marker must be on its own line."
+                ),
+                line=index + 1,
+                input_path=source_name,
+            )
         current_body.append(line)
         index += 1
 
@@ -509,7 +520,23 @@ def _plain_inline(fragments: list[InlineText]) -> str:
     return "".join(parts)
 
 
-def _parse_yaml_front_matter(
+def _metadata_scope(line: str) -> str | None:
+    match = METADATA_OPEN_RE.fullmatch(line)
+    return match.group("scope") if match else None
+
+
+def _reject_legacy_front_matter(lines: list[str], index: int, keys: set[str], *, source_name: str) -> None:
+    if index + 1 < len(lines) and lines[index].strip() == "---":
+        if any(lines[index + 1].lstrip().startswith(f"{key}:") for key in keys):
+            raise ParseError(
+                "legacy_front_matter",
+                "YAML front matter is unsupported. Use a named markdown-pptx metadata comment.",
+                line=index + 1,
+                input_path=source_name,
+            )
+
+
+def _parse_metadata_comment(
     lines: list[str],
     start_index: int,
     allowed_keys: set[str],
@@ -517,12 +544,19 @@ def _parse_yaml_front_matter(
     source_name: str,
 ) -> tuple[dict[str, object], int]:
     end_index = start_index + 1
-    while end_index < len(lines) and lines[end_index].strip() != "---":
+    while end_index < len(lines) and lines[end_index].strip() != "-->":
+        if "-->" in lines[end_index]:
+            raise ParseError(
+                "invalid_metadata_comment",
+                "Metadata comment closing marker must be on its own line.",
+                line=end_index + 1,
+                input_path=source_name,
+            )
         end_index += 1
     if end_index >= len(lines):
         raise ParseError(
-            "unterminated_front_matter",
-            "Front matter block is not terminated.",
+            "unterminated_metadata_comment",
+            "Metadata comment is not terminated.",
             line=start_index + 1,
             input_path=source_name,
         )
@@ -531,29 +565,29 @@ def _parse_yaml_front_matter(
         loaded = yaml.safe_load(raw) if raw.strip() else {}
     except yaml.YAMLError as exc:
         raise ParseError(
-            "invalid_yaml", f"Invalid YAML front matter: {exc}", line=start_index + 1, input_path=source_name
+            "invalid_yaml", f"Invalid YAML metadata: {exc}", line=start_index + 1, input_path=source_name
         ) from exc
     if loaded is None:
         loaded = {}
     if not isinstance(loaded, dict):
         raise ParseError(
-            "invalid_front_matter",
-            "Front matter must decode to a mapping.",
+            "invalid_metadata_comment",
+            "Metadata comment must decode to a mapping.",
             line=start_index + 1,
             input_path=source_name,
         )
     if any(not isinstance(key, str) for key in loaded):
         raise ParseError(
-            "invalid_front_matter",
-            "Front matter keys must be strings.",
+            "invalid_metadata_comment",
+            "Metadata keys must be strings.",
             line=start_index + 1,
             input_path=source_name,
         )
     unknown = sorted(set(loaded) - allowed_keys)
     if unknown:
         raise ParseError(
-            "unknown_front_matter_keys",
-            f"Unknown front matter key(s): {', '.join(unknown)}.",
+            "unknown_metadata_keys",
+            f"Unknown metadata key(s): {', '.join(unknown)}.",
             line=start_index + 1,
             input_path=source_name,
         )
@@ -752,25 +786,6 @@ def _strip_quotes(value: str) -> str:
     return value
 
 
-def _reject_misplaced_slide_front_matter(lines: list[str], *, base_line: int, source_name: str) -> None:
-    fence: FenceState | None = None
-    for index, line in enumerate(lines[:-1]):
-        was_in_fence = fence is not None
-        fence = _next_fence_state(line, fence)
-        if was_in_fence or fence is not None or line.strip() != "---":
-            continue
-        if index and lines[index - 1].strip():
-            continue
-        next_line = lines[index + 1].strip()
-        if any(next_line.startswith(f"{key}:") for key in SLIDE_KEYS):
-            raise ParseError(
-                "slide_front_matter_placement",
-                "Slide front matter must immediately follow its H1 heading.",
-                line=base_line + index,
-                input_path=source_name,
-            )
-
-
 def _next_fence_state(line: str, state: FenceState | None) -> FenceState | None:
     if state is not None:
         closing = re.match(rf"^[ ]{{0,3}}{re.escape(state.character)}{{{state.length},}}[ \t]*$", line)
@@ -812,7 +827,7 @@ def _validate_layout_content(
             )
         return
     if layout in {"Title Slide", "Section Header"}:
-        if body.images or body.tables:
+        if body.images or body.tables or body.videos:
             raise UnsupportedContentError(
                 f"{layout} slides only support text-flow body content.",
                 slide_index=slide_index,
@@ -823,12 +838,12 @@ def _validate_layout_content(
     if layout in {"Title and Content", "Two Content"}:
         if body.has_text_flow and body.has_non_text:
             raise UnsupportedContentError(
-                f"Each content area of a {layout} slide cannot mix text-flow blocks with images or tables.",
+                f"Each content area of a {layout} slide cannot mix text-flow blocks with images, tables, or videos.",
                 slide_index=slide_index,
                 line=line,
                 input_path=source_name,
             )
-        if len(body.images) > 1 or len(body.tables) > 1 or (body.images and body.tables):
+        if len(body.images) + len(body.tables) + len(body.videos) > 1:
             raise UnsupportedContentError(
                 f"Each content area of a {layout} slide may contain at most one non-text body object.",
                 slide_index=slide_index,

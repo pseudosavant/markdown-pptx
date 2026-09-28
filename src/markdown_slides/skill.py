@@ -37,7 +37,7 @@ metadata:
 
 # Markdown PPTX
 
-Use the published CLI through `uvx markdown-pptx`. It converts a strict Markdown and YAML format into editable PowerPoint files using real layouts and placeholders.
+Use the published CLI through `uvx markdown-pptx`. It converts a strict Markdown format with hidden metadata comments into editable PowerPoint files using real layouts and placeholders.
 
 Always invoke the tool as `uvx markdown-pptx ...`. Do not assume that a bare `markdown-pptx` command is installed globally, and do not substitute another launcher unless the user explicitly asks for one. This applies to rendering, inspection, validation, metadata, and skill-management commands.
 
@@ -60,7 +60,9 @@ Use `--json` when programmatic inspection is more reliable. The renderer retains
 
 ## Create A Deck
 
-Each ATX `# H1` or Setext H1 starts exactly one slide. Setext H1 uses a line of `===` below the title. Document front matter is allowed only at the beginning of the file, and slide front matter is allowed only immediately after its H1 heading.
+Each ATX `# H1` or Setext H1 starts exactly one slide. Setext H1 uses a line of `===` below the title. Put `<!-- markdown-pptx:deck` at the start of the file for deck metadata. Put `<!-- markdown-pptx:slide` immediately after an H1 for slide metadata. Write YAML settings inside each comment and close it with `-->` on its own line. These comments stay hidden in standard Markdown viewers.
+
+Theme references such as `var(--accent-1)` work inside metadata comments. Keep the exact `-->` sequence out of settings and speaker notes. Legacy `---` YAML front matter is unsupported.
 
 ```text
 uvx markdown-pptx deck.md deck.pptx --json
@@ -70,9 +72,9 @@ If no output path is supplied, the tool writes a `.pptx` beside the Markdown inp
 
 Soft line breaks become spaces. Use two trailing spaces or a trailing backslash for a visible line break within a paragraph. Task list markers become static checkboxes. Fenced code can use a language label for editable syntax coloring. Image descriptions, optional titles, and links around standalone images are preserved.
 
-Choose the layout before authoring each slide. `Title and Content` accepts text flow, one image, or one table. Use `Two Content` for text beside an image or table, or for two independent text areas. Keep content concise enough for the available space. Use real line breaks for intentional breaks and allow PowerPoint to wrap ordinary prose.
+Choose the layout before authoring each slide. `Title and Content` accepts text flow, one image, one table, or one video. Use `Two Content` for text beside an image, table, or video, or for two independent text areas. Keep content concise enough for the available space. Use real line breaks for intentional breaks and allow PowerPoint to wrap ordinary prose.
 
-Reuse link and image reference definitions across the deck, including in titles. Definitions may precede the first slide after document front matter. The first definition wins. `--examples references` shows full, collapsed, and shortcut references. Optional link titles become PowerPoint ScreenTips. A linked image has separate image metadata and link ScreenTip titles.
+Reuse link and image reference definitions across the deck, including in titles. Definitions may precede the first slide after the deck metadata comment. The first definition wins. `--examples references` shows full, collapsed, and shortcut references. Optional link titles become PowerPoint ScreenTips. A linked image has separate image metadata and link ScreenTip titles.
 
 Indent code, headings, and continuation paragraphs within their list item. Comments inside lists are ignored. Images inside lists are rejected. All nested lists count toward the three-level limit, including lists inside quotes. Ordered values outside 1 through 32767 use editable text prefixes that do not automatically renumber in PowerPoint.
 
@@ -82,9 +84,9 @@ Set `layout: Two Content` and insert exactly one top-level thematic break. Conte
 
 ```markdown
 # Compare options
----
+<!-- markdown-pptx:slide
 layout: Two Content
----
+-->
 
 ## First option
 
@@ -99,7 +101,7 @@ layout: Two Content
 - More preparation
 ```
 
-Each side independently accepts text flow, one image, or one table. Either side may be empty. Use `***` on its own line with blank lines around it. `---` and `___` work when parsed as thematic breaks, but `---` can also be YAML or a Setext H2 underline. A divider does not start a new slide or draw a line. More than one divider, nested dividers, and dividers on other layouts are rejected. The template must provide exactly two non-overlapping content placeholders arranged left to right. Three or more content areas are unsupported.
+Each side independently accepts text flow, one image, one table, or one video. Either side may be empty. Use `***` on its own line with blank lines around it. `---` and `___` work when parsed as thematic breaks, but `---` can also be a Setext H2 underline. A divider does not start a new slide or draw a line. More than one divider, nested dividers, and dividers on other layouts are rejected. The template must provide exactly two non-overlapping content placeholders arranged left to right. Three or more content areas are unsupported.
 
 ## Use Templates Carefully
 
@@ -111,14 +113,14 @@ uvx markdown-pptx --list-layouts --template theme.pptx --master 2 --json
 uvx markdown-pptx deck.md deck.pptx --template theme.pptx --master 2 --json
 ```
 
-The first embedded master is the default unless `--master` selects another. A slide can override that default with `master` in its front matter:
+The first embedded master is the default unless `--master` selects another. A slide can override that default with `master` in its metadata comment:
 
 ```text
 # Financial summary
----
+<!-- markdown-pptx:slide
 master: 2
 layout: Title and Content
----
+-->
 ```
 
 Selection precedence is slide `master`, CLI `--master`, then master `1`. Layout names are resolved only within the effective master. All embedded masters remain in the output so users can switch a slide's layout/master group later in PowerPoint.
@@ -132,7 +134,7 @@ Use `--ignore-document-colors` or `--ignore-slide-colors` only when the template
 Use document-level `color_scheme` to recolor theme-aware content throughout the output. Start from a preset and override selected slots, or set `preset: null` and provide all 12 PowerPoint theme colors for a fully custom palette:
 
 ```text
----
+<!-- markdown-pptx:deck
 color_scheme:
   preset: Office
   dark_1: "#10263F"
@@ -141,7 +143,7 @@ color_scheme:
   accent_2: "#5AA9E6"
 title_color: "var(--dark-1)"
 body_color: "var(--dark-2)"
----
+-->
 ```
 
 Theme-aware template objects and `var(--...)` references follow the resulting palette. Hard-coded RGB colors and embedded images do not. Inspect `--syntax` for all 12 keys and supported color formats.
@@ -154,11 +156,11 @@ Theme modes use Dark 1 or Light 1 for ordinary code and comments, plus Accents 1
 
 ## Style Tables With Slide Metadata
 
-Keep pipe-table syntax standard and put PowerPoint table-style flags in the slide front matter. Use `table` only when the slide contains at least one table. These options apply to both tables on a Two Content slide:
+Keep pipe-table syntax standard and put PowerPoint table-style flags in the slide metadata comment. Use `table` only when the slide contains at least one table. These options apply to both tables on a Two Content slide:
 
 ```text
 # Quarterly summary
----
+<!-- markdown-pptx:slide
 layout: Title and Content
 table:
   header_row: true
@@ -167,7 +169,7 @@ table:
   last_column: false
   banded_rows: true
   banded_columns: false
----
+-->
 
 | Region | Revenue |
 | --- | ---: |
@@ -176,6 +178,29 @@ table:
 ```
 
 The defaults are `header_row: true`, `banded_rows: true`, and false for the other four options. These settings control native PowerPoint styling. They do not calculate totals, and disabling `header_row` does not change Markdown's syntactic header row.
+
+## Add Videos
+
+A standalone Markdown link to an MP4 or YouTube video becomes a video object in PowerPoint. Inline links remain hyperlinks. The link must occupy one content area. A linked image pointing to an MP4 supplies a custom poster. A linked image pointing to YouTube stays an ordinary clickable image. Use `--examples videos` for complete examples.
+
+```markdown
+# Local demo
+
+[![Play demo](poster.png)](demo.mp4)
+
+<!-- markdown-pptx:video
+start: automatic
+fullscreen: true
+loop: true
+mute: true
+-->
+
+# YouTube demo
+
+[Watch the video](https://www.youtube.com/watch?v=aqz-KE-bpKQ)
+```
+
+The video comment is optional and must follow the link as a separate block. It accepts `width`, `aspect_ratio`, `align`, and `valign` for both sources. MP4 also accepts `start`, `fullscreen`, `loop`, and `mute`. It does not accept `source` or `poster`. MP4 defaults to a poster generated from its first decoded frame. YouTube defaults to 16:9 and uses the online player. Relative MP4 and poster paths resolve from the Markdown directory. Remote MP4 downloads respect `--max-remote-video-mb` and `--no-remote-videos`.
 
 ## Images And Paths
 

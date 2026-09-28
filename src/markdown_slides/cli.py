@@ -23,6 +23,7 @@ from markdown_slides.powerpoint_export import (
 )
 from markdown_slides.renderer import list_layout_details, list_master_details, render_pptx
 from markdown_slides.skill import install_skill, remove_skill, skill_status, synchronize_skill
+from markdown_slides.video import DEFAULT_MAX_REMOTE_VIDEO_MB
 
 PROGRAM_NAME = "markdown-pptx"
 PROJECT_URL = "https://github.com/pseudosavant/markdown-pptx"
@@ -31,7 +32,7 @@ PROJECT_LICENSE = "MIT"
 EXIT_CODES = (
     (0, "success"),
     (2, "usage or input error"),
-    (3, "Markdown or front-matter parse error"),
+    (3, "Markdown or metadata parse error"),
     (4, "template or layout error"),
     (5, "image or other asset error"),
     (6, "unsupported Markdown content"),
@@ -78,6 +79,13 @@ def build_parser(*, platform: str | None = None) -> argparse.ArgumentParser:
         "--no-remote-images",
         action="store_true",
         help="Reject HTTP(S) image URLs instead of downloading them.",
+    )
+    parser.add_argument("--no-remote-videos", action="store_true", help="Reject HTTPS MP4 video URLs.")
+    parser.add_argument(
+        "--max-remote-video-mb",
+        type=int,
+        default=DEFAULT_MAX_REMOTE_VIDEO_MB,
+        help=f"Maximum remote MP4 download size in decimal MB. Default: {DEFAULT_MAX_REMOTE_VIDEO_MB}.",
     )
     parser.add_argument("--json", action="store_true", help="Emit structured JSON output.")
     image_help = powerpoint_image_export_available(platform)
@@ -156,6 +164,8 @@ Common options:
   --master MASTER             Default to a 1-based master index or unique name.
   --force                     Overwrite existing generated outputs.
   --no-remote-images          Reject HTTP(S) images.
+  --no-remote-videos          Reject HTTPS MP4 videos.
+  --max-remote-video-mb MB    Maximum remote MP4 download size. Default: {DEFAULT_MAX_REMOTE_VIDEO_MB}.
   --ignore-document-colors    Keep template document colors.
   --ignore-slide-colors       Keep template slide colors.
   --json                      Emit structured output.
@@ -459,6 +469,8 @@ def _run(args: argparse.Namespace, *, stdin: TextIO, stdout: TextIO, stderr: Tex
             raise UsageError(f"{', '.join(orphaned)} require --export-images png or --export-images jpeg.")
     if args.image_width is not None and not 1 <= args.image_width <= MAX_IMAGE_WIDTH:
         raise UsageError(f"--image-width must be between 1 and {MAX_IMAGE_WIDTH} pixels.")
+    if args.max_remote_video_mb <= 0:
+        raise UsageError("--max-remote-video-mb must be greater than zero.")
 
     deck = parse_deck(source_text, input_path=input_path, source_name=source_name)
     deck = _apply_color_ignore_flags(
@@ -483,6 +495,8 @@ def _run(args: argparse.Namespace, *, stdin: TextIO, stdout: TextIO, stderr: Tex
         force=args.force,
         base_dir=base_dir,
         allow_remote_images=not args.no_remote_images,
+        allow_remote_videos=not args.no_remote_videos,
+        max_remote_video_mb=args.max_remote_video_mb,
         master=args.master,
         report=render_report,
     )
@@ -510,6 +524,8 @@ def _run(args: argparse.Namespace, *, stdin: TextIO, stdout: TextIO, stderr: Tex
             "ignore_document_colors": args.ignore_document_colors,
             "ignore_slide_colors": args.ignore_slide_colors,
             "remote_images": not args.no_remote_images,
+            "remote_videos": not args.no_remote_videos,
+            "max_remote_video_mb": args.max_remote_video_mb,
             **render_report,
         }
         if image_report is not None:
@@ -530,7 +546,12 @@ def _validate_inspection_args(args: argparse.Namespace, *, allowed: set[str]) ->
     labels = {"input_flag": "--input", "output_flag": "--output", "input": "input", "output": "output"}
     conflicting: list[str] = []
     for name, value in vars(args).items():
-        if name in allowed or name in ignored or value in (None, False):
+        if (
+            name in allowed
+            or name in ignored
+            or value in (None, False)
+            or (name == "max_remote_video_mb" and value == DEFAULT_MAX_REMOTE_VIDEO_MB)
+        ):
             continue
         conflicting.append(labels.get(name, f"--{name.replace('_', '-')}"))
     if conflicting:
@@ -627,19 +648,21 @@ def _format_syntax(payload: dict[str, object]) -> str:
     table_options = payload["table_options"]
     lines = [
         "Document structure:",
-        "  - Optional document front matter is allowed only at the top of the file.",
+        "  - Optional <!-- markdown-pptx:deck metadata goes at the top of the file and ends with -->.",
         "  - Each '# H1' starts a new slide.",
-        "  - Optional slide front matter is allowed only immediately after an H1.",
-        "  - Everything after the H1/front matter until the next H1 is the slide body.",
+        "  - Optional <!-- markdown-pptx:slide metadata goes immediately after an H1 and ends with -->.",
+        "  - Everything after the H1 and metadata comment until the next H1 is the slide body.",
         "",
-        f"Document front matter keys: {', '.join(payload['document_front_matter_keys'])}",
+        f"Deck metadata keys: {', '.join(payload['deck_metadata_keys'])}",
         f"aspect_ratio values: {', '.join(payload['aspect_ratio_values'])}",
-        f"Slide front matter keys: {', '.join(payload['slide_front_matter_keys'])}",
+        f"Slide metadata keys: {', '.join(payload['slide_metadata_keys'])}",
+        f"Metadata comment syntax: {json.dumps(payload['metadata_comment_syntax'])}",
         f"master selector: {payload['master_selector_syntax']}",
         f"layout values: {', '.join(payload['layout_values'])}",
         f"table options: {', '.join(table_options['defaults'])}",
         f"table option defaults: {json.dumps(table_options['defaults'])}",
         f"Two Content: {payload['two_content_syntax']}",
+        f"Video links: {json.dumps(payload['video_syntax'])}",
         f"Code highlighting: {json.dumps(payload['code_highlighting'])}",
         f"References and link titles: {payload['reference_syntax']}",
         f"List content: {payload['list_content_syntax']}",
