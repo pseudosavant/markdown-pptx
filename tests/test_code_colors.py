@@ -29,7 +29,7 @@ from markdown_slides.renderer import render_pptx
 
 
 def source(mode="theme-dark", background="#FFFFFF"):
-    return f'---\ncode_highlighting: {mode}\nbackground: "{background}"\n---\n\n# Code\n\n```python\n# readable comment\ndef greet(name: str):\n    return "Hello"\n```\n'
+    return f'<!-- markdown-pptx:deck\ncode_highlighting: {mode}\nbackground: "{background}"\n-->\n\n# Code\n\n```python\n# readable comment\ndef greet(name: str):\n    return "Hello"\n```\n'
 
 
 def render(text, tmp_path, template=None):
@@ -87,7 +87,7 @@ def test_token_category_mapping(token, role):
 @pytest.mark.parametrize("value", ["auto", "light", "THEME-DARK", "null", "false", "[]", "{}"])
 @pytest.mark.parametrize("scope", ["document", "slide"])
 def test_invalid_metadata(value, scope):
-    config = f"---\ncode_highlighting: {value}\n---\n"
+    config = f"<!-- markdown-pptx:{'deck' if scope == 'document' else 'slide'}\ncode_highlighting: {value}\n-->\n"
     text = config + "\n# Code\n" if scope == "document" else "# Code\n" + config
     with pytest.raises(ParseError) as exc:
         parse_deck(text, input_path=None, source_name="deck.md")
@@ -123,7 +123,7 @@ def test_theme_code_is_editable_and_uses_native_theme_references(mode, backgroun
 def test_slide_default_resets_document_theme_mode(tmp_path):
     text = (
         source()
-        + '\n# Original palette\n---\ncode_highlighting: default\n---\n\n```python\ndef f():\n    return "Hello"\n```\n'
+        + '\n# Original palette\n<!-- markdown-pptx:slide\ncode_highlighting: default\n-->\n\n```python\ndef f():\n    return "Hello"\n```\n'
     )
     p, report = render(text, tmp_path)
     keyword = next(run for run in p.slides[1].placeholders[1].text_frame.paragraphs[0].runs if run.text == "def")
@@ -161,7 +161,7 @@ def test_inherited_template_background_is_not_mutated(tmp_path):
 
 
 def test_two_content_uses_local_gradient_region(tmp_path):
-    text = '---\nbackground: "linear-gradient(0deg, #FFFFFF 0%, #E0E0E0 100%)"\ncode_highlighting: theme-dark\n---\n# Split\n---\nlayout: Two Content\n---\n\n```python\ndef a(): pass\n```\n\n***\n\n```python\ndef b(): pass\n```\n'
+    text = '<!-- markdown-pptx:deck\nbackground: "linear-gradient(0deg, #FFFFFF 0%, #E0E0E0 100%)"\ncode_highlighting: theme-dark\n-->\n# Split\n<!-- markdown-pptx:slide\nlayout: Two Content\n-->\n\n```python\ndef a(): pass\n```\n\n***\n\n```python\ndef b(): pass\n```\n'
     _, report = render(text, tmp_path)
     areas = report["code_highlighting"]
     assert len(areas) == 2
@@ -261,7 +261,7 @@ def test_slide_background_image_cover_uses_only_visible_pixels(tmp_path):
     image = Image.new("RGB", (1000, 100), "black")
     image.paste("white", (400, 0, 600, 100))
     image.save(tmp_path / "wide.png")
-    text = '# Code\n---\ncode_highlighting: theme-dark\nbackground: "url(wide.png)"\n---\n\n```python\ndef f(): pass\n```\n'
+    text = '# Code\n<!-- markdown-pptx:slide\ncode_highlighting: theme-dark\nbackground: "url(wide.png)"\n-->\n\n```python\ndef f(): pass\n```\n'
     _, report = render(text, tmp_path)
     assert report["code_highlighting"][0]["target_met"] is True
 
@@ -285,8 +285,8 @@ def test_syntax_describes_theme_modes_and_example():
     syntax = json.loads(output.getvalue())
     assert syntax["code_highlighting"]["values"] == ["default", "theme-dark", "theme-light"]
     assert syntax["code_highlighting"]["contrast_target"] == 4.5
-    assert "code_highlighting" in syntax["document_front_matter_keys"]
-    assert "code_highlighting" in syntax["slide_front_matter_keys"]
+    assert "code_highlighting" in syntax["deck_metadata_keys"]
+    assert "code_highlighting" in syntax["slide_metadata_keys"]
 
 
 def test_ignore_document_colors_retains_theme_code_mode(tmp_path):

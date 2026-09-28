@@ -99,25 +99,27 @@ The examples below continue to use `uvx markdown-pptx` so they work without a gl
 
 The document model has four core rules:
 
-1. Optional document front matter may appear only at the beginning of the file.
+1. An optional `<!-- markdown-pptx:deck` comment may appear only at the beginning of the file.
 2. Each ATX `# H1` or Setext H1 starts exactly one slide.
-3. Optional slide front matter may appear only immediately after its H1 heading.
-4. Everything until the next H1 belongs to that slide.
+3. An optional `<!-- markdown-pptx:slide` comment may appear only immediately after its H1 heading.
+4. Each metadata comment contains YAML and closes with `-->` on its own line. Everything until the next H1 belongs to that slide.
+
+The comments stay hidden in standard Markdown viewers. Theme references such as `var(--accent-1)` work inside them. The exact `-->` sequence ends an HTML comment, so do not put it inside a metadata value or speaker note. Legacy `---` YAML front matter is unsupported.
 
 A minimal two-slide deck looks like this:
 
 ```markdown
 # Quarterly review
----
+<!-- markdown-pptx:slide
 layout: Title Slide
----
+-->
 
 Acme Corporation
 
 # Highlights
----
+<!-- markdown-pptx:slide
 layout: Title and Content
----
+-->
 
 - Revenue grew 18%
 - Customer retention reached 94%
@@ -156,7 +158,7 @@ The renderer uses real placeholders for slide titles and bodies. Missing placeho
 
 ## Customize a deck
 
-Document front matter sets deck-wide defaults:
+The deck metadata comment sets deck-wide defaults:
 
 | Key | Purpose |
 | --- | --- |
@@ -167,7 +169,7 @@ Document front matter sets deck-wide defaults:
 | `title_color` | Set the default title color |
 | `body_color` | Set the default body and subtitle color |
 
-Slide front matter controls an individual slide:
+The slide metadata comment controls an individual slide:
 
 | Key | Purpose |
 | --- | --- |
@@ -187,7 +189,7 @@ Run `uvx markdown-pptx --syntax` for the complete schema, accepted values, and e
 Use `color_scheme` to recolor theme-aware template content throughout the presentation:
 
 ```yaml
----
+<!-- markdown-pptx:deck
 color_scheme:
   preset: Office
   dark_1: "#10263F"
@@ -196,7 +198,7 @@ color_scheme:
   accent_2: "#5AA9E6"
 title_color: "var(--dark-1)"
 body_color: "var(--dark-2)"
----
+-->
 ```
 
 Colors accept hex, RGB, HSL, and PowerPoint theme references such as `var(--accent-1)`. Set `preset: null` and provide all 12 theme slots for a fully custom palette. Theme-aware template objects follow the resulting palette, while hard-coded RGB colors and images do not.
@@ -205,18 +207,18 @@ When a template should provide the colors, use `--ignore-document-colors`, `--ig
 
 ### Tables
 
-Write standard Markdown pipe tables and put PowerPoint styling options in slide front matter:
+Write standard Markdown pipe tables and put PowerPoint styling options in the slide metadata comment:
 
 ```markdown
 # Quarterly summary
----
+<!-- markdown-pptx:slide
 layout: Title and Content
 table:
   header_row: true
   total_row: true
   first_column: true
   banded_rows: true
----
+-->
 
 | Region | Revenue |
 | --- | ---: |
@@ -229,6 +231,48 @@ Table flags control native PowerPoint styling. They do not calculate totals or c
 ### Images and paths
 
 Local image paths are resolved relative to the Markdown file. Remote HTTP and HTTPS images are enabled by default. Use `--no-remote-images` for offline builds or untrusted Markdown. Download assets ahead of time and use local paths when reproducible builds matter.
+
+### Videos
+
+Use a standalone Markdown link in a `Title and Content` area or either side of `Two Content`. MP4 and YouTube destinations become video objects. Links inside sentences stay hyperlinks:
+
+```markdown
+# Product demo
+
+[Play the demo](media/demo.mp4)
+
+<!-- markdown-pptx:video
+width: 75%
+start: automatic
+-->
+```
+
+For a custom MP4 poster, use a linked image. This remains a clickable image in ordinary Markdown:
+
+```markdown
+[![Play the demo](media/poster.png)](media/demo.mp4)
+```
+
+The `markdown-pptx:video` comment is optional. Put it in the next top-level block after the link. It accepts non-default settings, but not `source` or `poster`.
+
+The link destination accepts a local MP4 path, an HTTPS MP4 URL, or a YouTube watch, share, Shorts, or embed URL. Relative local paths resolve from the Markdown directory. Absolute paths are accepted on the current operating system. Use forward slashes in Windows Markdown links, as in `<C:/media/demo.mp4>`. The MP4 bytes are embedded in the PPTX, so the completed deck does not depend on the source path. HTTPS MP4 files are downloaded during rendering. The default download limit is 100 decimal MB. Use `--max-remote-video-mb NUMBER` to change it or `--no-remote-videos` to reject remote MP4 files. YouTube videos remain online and need an internet connection when played.
+
+Local MP4 files must contain H.264 video. PyAV reads the video's display aspect ratio and generates a poster from its first decoded frame unless the link contains a local image. PowerPoint stores the poster inside the PPTX. A mismatched poster is fitted with black bars. Set `aspect_ratio: "4:3"` in the optional video comment to override the detected ratio. YouTube defaults to 16:9 and also accepts `aspect_ratio`. A linked image pointing to YouTube remains an ordinary clickable image.
+
+| Setting | Local or remote MP4 | YouTube | Default |
+| --- | --- | --- | --- |
+| Link destination | MP4 path or HTTPS URL | YouTube URL | Required |
+| `width` | `auto`, percent, or inches such as `6in` | Same | `auto`, fit in content area |
+| `aspect_ratio` | Optional width to height ratio | Optional width to height ratio | Video metadata for MP4, 16:9 for YouTube |
+| `align` | `left`, `center`, `right` | Same | `center` |
+| `valign` | `top`, `middle`, `bottom` | Same | `middle` |
+| Linked poster image | Local image path | Unsupported | First decoded video frame for MP4 |
+| `start` | `automatic` or `click` | Unsupported | `click` |
+| `fullscreen` | Boolean | Unsupported | `false` |
+| `loop` | Boolean | Unsupported | `false` |
+| `mute` | Boolean | Unsupported | `false` |
+
+`click` starts playback on the next slide advance click. The video starts before PowerPoint advances to the next slide. `automatic` starts playback when the slide appears. Neither option advances the slide when playback ends. `mute: false` uses PowerPoint's high volume setting. `fullscreen: true` starts local video in full screen playback. YouTube playback controls are managed by the online player, so the local playback settings are rejected for YouTube sources. Videos occupy one content area and cannot be mixed with text, images, or tables in that area.
 
 When reading Markdown from stdin, provide an output path and a base directory for relative assets:
 
@@ -244,8 +288,8 @@ The built-in template provides these common layouts. Supplied templates may use 
 | --- | --- |
 | `Title Slide` | Body text is placed in the subtitle placeholder |
 | `Section Header` | Body text is placed in the subtitle or body placeholder |
-| `Title and Content` | Accepts text flow, one image, or one table |
-| `Two Content` | One thematic break separates left and right content. Each side accepts text flow, one image, or one table |
+| `Title and Content` | Accepts text flow, one image, one table, or one video |
+| `Two Content` | One thematic break separates left and right content. Each side accepts text flow, one image, one table, or one video |
 | `Title Only` | Does not accept body content |
 | `Blank` | Requires an empty title and empty body |
 
@@ -262,8 +306,9 @@ Supported Markdown includes:
 - Blockquotes with nested text, headings, lists, and code
 - Pipe tables
 - Local and remote standalone images, including linked images
+- Embedded H.264 MP4 and online YouTube video links
 
-Soft line breaks become spaces so ordinary source wrapping does not force a line break on the slide. Use a hard line break when the visual line must end. A Setext heading uses `===` for H1 or `---` for H2 on the next line. Setext has no H3 through H6 form. Slide front matter must still immediately follow the slide heading.
+Soft line breaks become spaces so ordinary source wrapping does not force a line break on the slide. Use a hard line break when the visual line must end. A Setext heading uses `===` for H1 or `---` for H2 on the next line. Setext has no H3 through H6 form. The slide metadata comment must still immediately follow the slide heading.
 
 Inline formatting stays editable in PowerPoint, including formatting nested inside links. Task boxes are static symbols. Fenced code uses the first language label for syntax coloring when Pygments recognizes it. Unknown labels produce plain editable code. Image alt text and optional titles are stored in the picture metadata. A link around a standalone image makes the picture clickable.
 
@@ -280,7 +325,7 @@ The intentionally unsupported set includes:
 
 ### Shared references and hyperlink titles
 
-Link and image definitions apply across the whole deck, including slide titles. Full references (`[Guide][docs]`), collapsed references (`[docs][]`), and shortcut references (`[docs]`) work. Definitions can appear before the first slide, after document front matter, or in a later slide body. They do not produce visible content. Labels follow CommonMark normalization, and the first definition wins.
+Link and image definitions apply across the whole deck, including slide titles. Full references (`[Guide][docs]`), collapsed references (`[docs][]`), and shortcut references (`[docs]`) work. Definitions can appear before the first slide, after the deck metadata comment, or in a later slide body. They do not produce visible content. Labels follow CommonMark normalization, and the first definition wins.
 
 ```markdown
 [docs]: https://example.com "Read the documentation"
@@ -312,7 +357,7 @@ Ordered lists preserve their starting number, including zero. PowerPoint native 
 
 ### Theme syntax colors
 
-Fenced code keeps its existing Pygments colors by default. Set `code_highlighting` in document front matter or override it on a slide:
+Fenced code keeps its existing Pygments colors by default. Set `code_highlighting` in the deck metadata comment or override it on a slide:
 
 ```yaml
 code_highlighting: theme-dark
@@ -357,9 +402,9 @@ Select `Two Content` explicitly and put exactly one top-level thematic break bet
 
 ```markdown
 # Compare options
----
+<!-- markdown-pptx:slide
 layout: Two Content
----
+-->
 
 ## First option
 
@@ -374,9 +419,9 @@ layout: Two Content
 - More preparation
 ```
 
-Each side follows the same content rules as `Title and Content`. Text beside an image or table is supported. Mixing text and an image or table within one side is rejected. Either side can be empty, but the separator is still required.
+Each side follows the same content rules as `Title and Content`. Text beside an image, table, or video is supported. Mixing text and a non-text object within one side is rejected. Either side can be empty, but the separator is still required.
 
-Prefer `***` surrounded by blank lines. CommonMark `---` and `___` thematic breaks also work. A `---` directly below paragraph text is a Setext H2 underline. YAML front matter remains valid only immediately after the slide heading. Breaks inside code fences remain literal code. Nested breaks and more than one break are rejected.
+Prefer `***` surrounded by blank lines. CommonMark `---` and `___` thematic breaks also work. A `---` directly below paragraph text is a Setext H2 underline. The slide metadata comment remains valid only immediately after the slide heading. Breaks inside code fences remain literal code. Nested breaks and more than one break are rejected.
 
 The selected template layout must contain exactly two body/content placeholders with non-overlapping horizontal bounds. Content follows their position from left to right, regardless of placeholder index. No divider line or extra text boxes are created. Layouts with three or more content areas are unsupported.
 
@@ -445,7 +490,7 @@ Exit codes:
 | ---: | --- |
 | `0` | Success |
 | `2` | Usage or input error |
-| `3` | Markdown or front-matter parse error |
+| `3` | Markdown or metadata parse error |
 | `4` | Template or layout error |
 | `5` | Image or other asset error |
 | `6` | Unsupported Markdown content |
@@ -458,6 +503,9 @@ Exit codes:
 - [Sample rendered deck](sample/showcase.pptx)
 - [Sample multi-master template](sample/showcase-template.pptx)
 - [Sample local image](sample/showcase-local.png)
+- [Sample Big Buck Bunny clip](sample/big-buck-bunny-clip.mp4)
+- [Sample Big Buck Bunny poster](sample/big-buck-bunny-poster.png)
+- [Sample video credits](sample/VIDEO-CREDITS.md)
 
 Regenerate the showcase from the repository checkout:
 

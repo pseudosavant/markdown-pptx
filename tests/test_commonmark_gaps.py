@@ -42,7 +42,7 @@ def test_first_definition_wins_with_normalized_labels():
 
 
 def test_definitions_in_lists_quotes_and_two_content_are_global():
-    source = "# [list] [quote] [right]\n\n# Definitions\n\n- [list]: https://list.example\n\n> [quote]: https://quote.example\n\n# Two\n---\nlayout: Two Content\n---\n\nLeft\n\n***\n\n[right]: https://right.example\n"
+    source = "# [list] [quote] [right]\n\n# Definitions\n\n- [list]: https://list.example\n\n> [quote]: https://quote.example\n\n# Two\n<!-- markdown-pptx:slide\nlayout: Two Content\n-->\n\nLeft\n\n***\n\n[right]: https://right.example\n"
     deck = parse(source)
     links = [f.href for f in deck.slides[0].title_fragments if f.kind == "link"]
     assert links == ["https://list.example", "https://quote.example", "https://right.example"]
@@ -68,13 +68,13 @@ def test_literal_definitions_do_not_create_references(definition):
 
 
 def test_yaml_notes_do_not_define_markdown_references():
-    deck = parse("# [ref]\n---\nnotes: |\n  [ref]: https://example.com\n---\n")
+    deck = parse("# [ref]\n<!-- markdown-pptx:slide\nnotes: |\n  [ref]: https://example.com\n-->\n")
     assert deck.slides[0].title == "[ref]"
 
 
 def test_reference_definition_only_preamble_and_empty_slide():
     deck = parse(
-        "---\ncode_highlighting: default\n---\n\n<!-- note -->\n[ref]: https://example.com\n\n#\n\n[other]: https://example.org\n"
+        "<!-- markdown-pptx:deck\ncode_highlighting: default\n-->\n\n<!-- note -->\n[ref]: https://example.com\n\n#\n\n[other]: https://example.org\n"
     )
     assert deck.slides[0].layout == "Blank"
     with pytest.raises(ParseError, match="Content is not allowed"):

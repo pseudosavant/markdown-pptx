@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 from contextlib import closing
 from copy import deepcopy
 from pathlib import Path
@@ -18,7 +19,11 @@ from markdown_slides.renderer import BODY_PLACEHOLDERS, Downloader, list_layout_
 
 
 def parse_two(body: str, *, layout: str = "Two Content"):
-    return parse_deck(f"# Compare\n---\nlayout: {layout}\n---\n\n{body}\n", input_path=None, source_name="deck.md")
+    return parse_deck(
+        f"# Compare\n<!-- markdown-pptx:slide\nlayout: {layout}\n-->\n\n{body}\n",
+        input_path=None,
+        source_name="deck.md",
+    )
 
 
 def render(deck, tmp_path: Path, *, template: Path | None = None, downloader=None):
@@ -99,7 +104,7 @@ def test_each_region_rejects_mixed_or_multiple_objects(mixed, side):
 
 
 def test_two_tables_share_slide_table_options(tmp_path):
-    source = "# Tables\n---\nlayout: Two Content\ntable:\n  total_row: true\n  banded_rows: false\n---\n\n"
+    source = "# Tables\n<!-- markdown-pptx:slide\nlayout: Two Content\ntable:\n  total_row: true\n  banded_rows: false\n-->\n\n"
     source += "| Left |\n| --- |\n| 1 |\n\n***\n\n| Right |\n| --- |\n| 2 |\n"
     deck = parse_deck(source, input_path=None, source_name="deck.md")
     slide = render(deck, tmp_path).slides[0]
@@ -170,6 +175,9 @@ def test_every_example_is_copyable_and_renderable(topic, tmp_path):
     source = stdout.getvalue()
     deck = parse_deck(source, input_path=None, source_name=f"{topic}.md")
     Image.new("RGB", (40, 20), "blue").save(tmp_path / "photo.png")
+    if topic == "videos":
+        shutil.copy(Path(__file__).parent / "assets/demo.mp4", tmp_path / "demo.mp4")
+        Image.new("RGB", (400, 300), "red").save(tmp_path / "poster.png")
 
     class ExampleDownloader(Downloader):
         def fetch(self, url):

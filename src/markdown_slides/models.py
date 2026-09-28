@@ -63,6 +63,21 @@ class ImageBlock:
 
 
 @dataclass(slots=True)
+class VideoBlock:
+    source: str
+    kind: str
+    width: str = "auto"
+    aspect_ratio: float | None = None
+    align: str = "center"
+    valign: str = "middle"
+    poster: str | None = None
+    start: str = "click"
+    fullscreen: bool = False
+    loop: bool = False
+    mute: bool = False
+
+
+@dataclass(slots=True)
 class TableBlock:
     headers: list[list[InlineText]]
     rows: list[list[list[InlineText]]]
@@ -83,10 +98,11 @@ class BodyContent:
     paragraphs: list[Paragraph] = field(default_factory=list)
     images: list[ImageBlock] = field(default_factory=list)
     tables: list[TableBlock] = field(default_factory=list)
+    videos: list[VideoBlock] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
-        return not self.paragraphs and not self.images and not self.tables
+        return not self.paragraphs and not self.images and not self.tables and not self.videos
 
     @property
     def has_text_flow(self) -> bool:
@@ -94,7 +110,7 @@ class BodyContent:
 
     @property
     def has_non_text(self) -> bool:
-        return bool(self.images or self.tables)
+        return bool(self.images or self.tables or self.videos)
 
 
 @dataclass(slots=True)

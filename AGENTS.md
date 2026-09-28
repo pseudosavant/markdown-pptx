@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repository contains **`markdown-pptx`**, a Python CLI that converts a constrained Markdown + YAML front-matter format into editable PowerPoint `.pptx` files using real PowerPoint layouts and placeholders.
+This repository contains **`markdown-pptx`**, a Python CLI that converts constrained Markdown with hidden metadata comments into editable PowerPoint `.pptx` files using real PowerPoint layouts and placeholders.
 
 ## Project identity
 
@@ -13,7 +13,7 @@ Do not rename the import package unless the user explicitly asks. The distributi
 ## Repo layout
 
 - `src/markdown_slides/cli.py` — CLI argument parsing, JSON/plain output, render entrypoint
-- `src/markdown_slides/parser.py` — document/front-matter parsing and validation
+- `src/markdown_slides/parser.py` handles document metadata and slide parsing.
 - `src/markdown_slides/markdown_body.py` — markdown body parsing into internal models
 - `src/markdown_slides/models.py` — dataclasses for deck/slide/body structures
 - `src/markdown_slides/renderer.py` — PPTX rendering, template/theme handling, background and text formatting
@@ -25,7 +25,9 @@ Do not rename the import package unless the user explicitly asks. The distributi
 
 - The format is intentionally **strict**. Preserve that philosophy.
 - `# H1` is the only slide boundary.
-- Slide front matter is valid **only** immediately after an H1.
+- Deck metadata uses a `markdown-pptx:deck` HTML comment at the start of the file.
+- Slide metadata uses a `markdown-pptx:slide` HTML comment immediately after an H1.
+- Standalone MP4 and YouTube links become videos. A linked image to an MP4 supplies its poster. Optional `markdown-pptx:video` comments hold playback settings.
 - The renderer should use **real template placeholders/layouts** and should fail when required placeholders are missing rather than inventing floating text boxes.
 - Keep behavior predictable for both humans and coding agents.
 - Prefer adding tests for behavior changes, especially parser and renderer semantics.
@@ -37,7 +39,7 @@ Common commands from repo root:
 ```powershell
 uvx --refresh --from . markdown-pptx --help
 uvx --refresh --with-editable . pytest --basetemp=.pytest-tmp
-uvx --refresh --from . markdown-pptx sample\showcase.md sample\showcase.pptx --force
+uvx --refresh --from . markdown-pptx sample\showcase.md sample\showcase.pptx --template sample\showcase-template.pptx --force
 uvx --refresh --from . markdown-pptx --syntax
 uvx --refresh --from . markdown-pptx --list-layouts
 ```

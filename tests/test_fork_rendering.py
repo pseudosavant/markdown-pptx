@@ -19,7 +19,7 @@ def test_explicit_theme_background_replaces_template_brightness(tmp_path: Path) 
     template = tmp_path / "template.pptx"
     presentation.save(template)
     deck = parse_deck(
-        '---\nbackground: "var(--accent-2)"\n---\n# Title\n\nBody\n',
+        '<!-- markdown-pptx:deck\nbackground: "var(--accent-2)"\n-->\n# Title\n\nBody\n',
         input_path=tmp_path / "deck.md",
         source_name="deck.md",
     )

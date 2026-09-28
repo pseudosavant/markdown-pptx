@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.0.0
+
+- **Breaking change:** Replace deck and slide YAML front matter with hidden `markdown-pptx:deck` and `markdown-pptx:slide` HTML comments. The old `---` front matter format is rejected. Move the same YAML settings inside the matching comment:
+
+  ```markdown
+  <!-- markdown-pptx:deck
+  aspect_ratio: "16:9"
+  -->
+
+  # Slide title
+  <!-- markdown-pptx:slide
+  layout: Title and Content
+  -->
+  ```
+
+- Turn standalone Markdown links to H.264 MP4 files and YouTube videos into PowerPoint video objects. Local and HTTPS MP4 files are embedded. YouTube playback remains online.
+- Use a linked image to provide a custom MP4 poster. Otherwise, PyAV generates a poster from the first decoded frame and reads the video's display aspect ratio.
+- Add optional video comments for sizing and placement. MP4 playback also supports `start`, `fullscreen`, `loop`, and `mute`. Remote MP4 downloads have a configurable size limit.
+- Add video examples and Big Buck Bunny slides to the showcase. Update the CLI syntax, README, and managed skill for the new format.
+
 ## 1.3.0
 
 - Automatically synchronize an already-installed managed skill during normal installed CLI runs. Use the running version, PEP 440 ordering, content hashes, and atomic replacement to preserve edits and avoid downgrades.

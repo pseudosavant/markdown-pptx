@@ -11,12 +11,14 @@ from pathlib import Path
 
 import httpx
 import pytest
+from PIL import Image
 from pptx import Presentation
 
 from markdown_slides.assets import default_template_path
 from markdown_slides.errors import AssetError, RenderError, TemplateError
 from markdown_slides.parser import parse_deck
 from markdown_slides.renderer import Downloader, list_layout_details, list_master_details, render_pptx
+from markdown_slides.video import VideoDownloader
 
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
@@ -26,6 +28,137 @@ NS = {
     "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
 }
 TABLE_STYLE_MEDIUM_1_ACCENT_1 = "{B301B821-A1FF-4177-AEE7-76D212191A09}"
+VIDEO_FIXTURE = Path(__file__).parent / "assets" / "demo.mp4"
+
+
+def test_local_video_embeds_poster_and_playback_settings(tmp_path: Path) -> None:
+    shutil.copy(VIDEO_FIXTURE, tmp_path / "demo.mp4")
+    deck = parse_deck(
+        "# Video\n\n[Play demo](demo.mp4)\n\n<!-- markdown-pptx:video\nstart: automatic\nloop: true\n"
+        "mute: true\nfullscreen: true\nwidth: 75%\n-->\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "video.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+        media = xml.find(".//p:video", NS)
+        assert media is not None and media.get("fullScrn") == "1"
+        assert media.find("p:cMediaNode", NS).get("vol") == "0"
+        assert media.find("p:cMediaNode/p:cTn", NS).get("repeatCount") == "indefinite"
+        effect = xml.find(".//p:cTn[@presetClass='mediacall']", NS)
+        assert effect is not None and effect.get("nodeType") == "withEffect"
+        assert xml.find(".//p:cond[@evt='onBegin']", NS) is not None
+        assert any(name.endswith(".mp4") for name in archive.namelist() if name.startswith("ppt/media/"))
+        assert any(name.endswith(".png") for name in archive.namelist() if name.startswith("ppt/media/"))
+    presentation = Presentation(output)
+    shape = next(shape for shape in presentation.slides[0].shapes if shape.name == "MarkdownSlidesVideo")
+    assert abs(shape.width / shape.height - 16 / 9) < 0.001
+
+
+def test_video_click_sequence_and_two_content_placement(tmp_path: Path) -> None:
+    shutil.copy(VIDEO_FIXTURE, tmp_path / "demo.mp4")
+    deck = parse_deck(
+        "# Split\n<!-- markdown-pptx:slide\nlayout: Two Content\n-->\n\nText on left\n\n***\n\n"
+        "[Play demo](demo.mp4)\n\n<!-- markdown-pptx:video\naspect_ratio: '4:3'\n-->\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "split.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+        effect = xml.find(".//p:cTn[@presetClass='mediacall']", NS)
+        assert effect is not None and effect.get("nodeType") == "clickEffect"
+        assert xml.find(".//p:cond[@evt='onBegin']", NS) is None
+    slide = Presentation(output).slides[0]
+    shape = next(shape for shape in slide.shapes if shape.name == "MarkdownSlidesVideo")
+    assert abs(shape.width / shape.height - 4 / 3) < 0.001
+    assert shape.left > slide.slide_layout.placeholders[1].left
+
+
+def test_youtube_video_uses_external_media_relationship(tmp_path: Path) -> None:
+    deck = parse_deck(
+        "# Online\n\n[Watch Big Buck Bunny](https://www.youtube.com/watch?v=aqz-KE-bpKQ)\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "online.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    with zipfile.ZipFile(output) as archive:
+        slide_xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+        rel_xml = ET.fromstring(archive.read("ppt/slides/_rels/slide1.xml.rels"))
+        assert slide_xml.find(".//a:videoFile", NS) is not None
+        assert slide_xml.find(".//p:cTn[@presetClass='mediacall']", NS) is None
+        assert any(
+            item.get("Target") == "https://www.youtube.com/embed/aqz-KE-bpKQ" and item.get("TargetMode") == "External"
+            for item in rel_xml
+        )
+        assert not any(name.endswith(".mp4") for name in archive.namelist() if name.startswith("ppt/media/"))
+
+
+def test_remote_video_download_uses_decimal_mb_limit(tmp_path: Path) -> None:
+    def response(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "video/mp4"}, content=b"x" * 1_000_001)
+
+    client = httpx.Client(transport=httpx.MockTransport(response))
+    downloader = VideoDownloader(client=client, max_mb=1)
+    try:
+        with pytest.raises(AssetError) as exc:
+            downloader.fetch("https://example.test/demo.mp4")
+        assert exc.value.context.code == "remote_video_too_large"
+    finally:
+        downloader.close()
+        client.close()
+
+
+def test_remote_video_download_streams_and_cleans_up() -> None:
+    payload = VIDEO_FIXTURE.read_bytes()
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, headers={"content-type": "video/mp4"}, content=payload)
+        )
+    )
+    downloader = VideoDownloader(client=client, max_mb=1)
+    try:
+        path = downloader.fetch("https://example.test/demo.mp4")
+        assert path.read_bytes() == payload
+        assert downloader.fetch("https://example.test/demo.mp4") == path
+    finally:
+        downloader.close()
+        client.close()
+    assert not path.exists()
+
+
+def test_local_video_accepts_custom_poster_and_remote_disable(tmp_path: Path) -> None:
+    shutil.copy(VIDEO_FIXTURE, tmp_path / "demo.mp4")
+    Image.new("RGB", (400, 300), "red").save(tmp_path / "poster.png")
+    deck = parse_deck(
+        "# Video\n\n[![Play demo](poster.png)](demo.mp4)\n", input_path=tmp_path / "deck.md", source_name="deck.md"
+    )
+    output = tmp_path / "poster.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    with zipfile.ZipFile(output) as archive:
+        posters = [name for name in archive.namelist() if name.startswith("ppt/media/") and name.endswith(".png")]
+        assert len(posters) == 1
+        with Image.open(archive.open(posters[0])) as image:
+            assert image.getpixel((image.width // 2, image.height // 2)) == (255, 0, 0)
+    remote = parse_deck(
+        "# Video\n\n[Play demo](https://example.test/demo.mp4)\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    with pytest.raises(AssetError) as exc:
+        render_pptx(
+            remote,
+            output_path=tmp_path / "remote.pptx",
+            template_path=None,
+            force=False,
+            base_dir=tmp_path,
+            allow_remote_videos=False,
+        )
+    assert exc.value.context.code == "remote_videos_disabled"
 
 
 def _png_header(*, width: int, height: int) -> bytes:
@@ -141,7 +274,7 @@ def _make_two_master_template(path: Path) -> None:
 
 def test_render_preserves_text_placeholders_and_notes(tmp_path: Path) -> None:
     deck = parse_deck(
-        """---
+        """<!-- markdown-pptx:deck
 fonts:
   body: Aptos
   headings: Aptos Display
@@ -149,15 +282,15 @@ title_color: "#112233"
 body_color: "#445566"
 color_scheme:
   preset: Office
----
+-->
 
 # Title slide title
----
+<!-- markdown-pptx:slide
 layout: Title Slide
 body_color: "#778899"
 notes: |
   Note line.
----
+-->
 
 Title slide subtitle
 
@@ -166,9 +299,9 @@ Title slide subtitle
 Title and content text
 
 # Section header title
----
+<!-- markdown-pptx:slide
 layout: Section Header
----
+-->
 
 Section header subtitle
 """,
@@ -199,14 +332,14 @@ Section header subtitle
 
 def test_render_sets_theme_and_aspect_ratio(tmp_path: Path) -> None:
     deck = parse_deck(
-        """---
+        """<!-- markdown-pptx:deck
 aspect_ratio: "4:3"
 fonts:
   body: Aptos
   headings: Aptos Display
 color_scheme:
   preset: Blue Warm
----
+-->
 
 # Slide
 
@@ -328,11 +461,11 @@ def test_render_background_and_body_image(tmp_path: Path) -> None:
     image_path = tmp_path / "photo.png"
     image_path.write_bytes(PNG_BYTES)
     deck = parse_deck(
-        """---
+        """<!-- markdown-pptx:deck
 background: "linear-gradient(90deg, #0E2841 0%, #156082 100%)"
 color_scheme:
   preset: Office
----
+-->
 
 # Photo
 
@@ -495,9 +628,9 @@ def test_render_document_background_image_targets_slide_master(tmp_path: Path) -
     image_path = tmp_path / "bg.png"
     image_path.write_bytes(PNG_BYTES)
     deck = parse_deck(
-        """---
+        """<!-- markdown-pptx:deck
 background: "url('./bg.png')"
----
+-->
 
 # Slide
 
@@ -557,7 +690,7 @@ Paragraph
 def test_render_slide_table_options_as_native_powerpoint_flags(tmp_path: Path) -> None:
     deck = parse_deck(
         """# Table
----
+<!-- markdown-pptx:slide
 table:
   header_row: false
   total_row: true
@@ -565,7 +698,7 @@ table:
   last_column: true
   banded_rows: false
   banded_columns: true
----
+-->
 
 | A | B |
 | --- | --- |
@@ -593,9 +726,9 @@ table:
 def test_render_radial_gradient_background_writes_path_gradient_xml(tmp_path: Path) -> None:
     deck = parse_deck(
         """# Radial
----
+<!-- markdown-pptx:slide
 background: "radial-gradient(circle, #0E2841 0%, #156082 55%, #EAF3FF 100%)"
----
+-->
 
 Body
 """,
@@ -614,11 +747,11 @@ Body
 
 def test_render_theme_color_refs_for_text_and_backgrounds(tmp_path: Path) -> None:
     deck = parse_deck(
-        """---
+        """<!-- markdown-pptx:deck
 title_color: "var(--light-1)"
 body_color: "var(--dark-1)"
 background: "linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)"
----
+-->
 
 # Slide
 
@@ -646,9 +779,9 @@ Paragraph
 def test_render_section_header_subtitle_uses_theme_body_text_color_by_default(tmp_path: Path) -> None:
     deck = parse_deck(
         """# Section heading
----
+<!-- markdown-pptx:slide
 layout: Section Header
----
+-->
 
 Subtitle text
 """,
@@ -717,14 +850,14 @@ def test_missing_placeholder_template_fails(tmp_path: Path) -> None:
 
 def test_render_preserves_all_gradient_stops_and_zero_degree_angle(tmp_path: Path) -> None:
     deck = parse_deck(
-        """---
+        """<!-- markdown-pptx:deck
 background: "linear-gradient(0deg, #111111 0%, #222222 40%, #333333 100%)"
----
+-->
 
 # Slide
----
+<!-- markdown-pptx:slide
 background: "linear-gradient(0deg, #444444 0%, #555555 50%, #666666 100%)"
----
+-->
 
 Body
 """,
@@ -996,7 +1129,7 @@ def test_render_rejects_images_over_the_pixel_limit(tmp_path: Path) -> None:
 
 def test_render_fully_custom_color_scheme_metadata(tmp_path: Path) -> None:
     deck = parse_deck(
-        """---
+        """<!-- markdown-pptx:deck
 color_scheme:
   preset:
   dark_1: "#010101"
@@ -1011,7 +1144,7 @@ color_scheme:
   accent_6: "#666666"
   hyperlink: "#777777"
   followed_hyperlink: "#888888"
----
+-->
 
 # Slide
 
@@ -1076,10 +1209,10 @@ def test_render_rewrites_the_first_masters_actual_theme_part(tmp_path: Path) -> 
                 data = ET.tostring(xml, encoding="utf-8", xml_declaration=True)
             target.writestr(info, data)
     deck = parse_deck(
-        """---
+        """<!-- markdown-pptx:deck
 color_scheme:
   preset: Blue Warm
----
+-->
 
 # Slide
 
@@ -1139,9 +1272,9 @@ def test_cli_master_selection_and_slide_override_choose_layouts_from_each_master
 Body
 
 # Slide override
----
+<!-- markdown-pptx:slide
 master: Executive
----
+-->
 
 Body
 """,
@@ -1210,14 +1343,14 @@ def test_document_theme_and_background_overrides_apply_to_all_retained_masters(t
     template = tmp_path / "two-master-template.pptx"
     _make_two_master_template(template)
     deck = parse_deck(
-        """---
+        """<!-- markdown-pptx:deck
 fonts:
   body: Arial
   headings: Arial
 color_scheme:
   preset: Blue Warm
 background: "#EAF3FF"
----
+-->
 
 # Slide
 
