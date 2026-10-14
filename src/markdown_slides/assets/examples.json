@@ -7,15 +7,21 @@
   },
   {
     "id": "two-content",
-    "description": "Exactly one top-level thematic break divides a Two Content slide into left and right content. Each side can contain text, one table, or one image. Either side can be empty.",
+    "description": "Exactly one top-level thematic break automatically selects Two Content without layout metadata. Each side can contain text, one table, one image, or one video. Either side can be empty.",
     "requirements": "A Two Content layout with exactly two non-overlapping content placeholders arranged left to right. The default template includes one. Prefer *** with blank lines. --- and ___ also work when parsed as thematic breaks. A Setext underline is a heading, and Slide metadata comments belong immediately after H1. Nested or additional thematic breaks are rejected.",
-    "markdown": "# Options\n<!-- markdown-pptx:slide\nlayout: Two Content\nnotes: Compare the two approaches.\n-->\n\n## Option A\n\n- Small initial scope\n- Quick feedback\n\n***\n\n## Option B\n\n- Broader initial scope\n- More preparation\n\n# Summary and figures\n<!-- markdown-pptx:slide\nlayout: Two Content\ntable:\n  first_column: true\n-->\n\n## Progress\n\n- [x] Design agreed\n- [ ] Delivery scheduled\n\n***\n\n| Milestone | Status |\n| --- | --- |\n| Design | Complete |\n| Delivery | Planned |\n\n# Space for discussion\n<!-- markdown-pptx:slide\nlayout: Two Content\n-->\n\n***\n\nAdd your observations here.\n"
+    "markdown": "# Options\n<!-- markdown-pptx:slide\nnotes: Compare the two approaches.\n-->\n\n## Option A\n\n- Small initial scope\n- Quick feedback\n\n***\n\n## Option B\n\n- Broader initial scope\n- More preparation\n\n# Summary and figures\n<!-- markdown-pptx:slide\ntable:\n  first_column: true\n-->\n\n## Progress\n\n- [x] Design agreed\n- [ ] Delivery scheduled\n\n***\n\n| Milestone | Status |\n| --- | --- |\n| Design | Complete |\n| Delivery | Planned |\n\n# Space for discussion\n\n***\n\nAdd your observations here.\n"
   },
   {
     "id": "layouts",
-    "description": "All supported layout names and empty-title syntax. H1 starts slides. A thematic break only separates content within Two Content.",
+    "description": "All supported layout names and empty-title syntax. H1 starts slides. A thematic break selects Two Content and separates its content. Heading-only slides infer title and section layouts without metadata.",
     "requirements": "Packaged default template. Layout names must exist on the selected master. Title Slide and Section Header accept text only. Title Only has no body. Blank has neither title nor body.",
-    "markdown": "# Welcome\n<!-- markdown-pptx:slide\nlayout: Title Slide\n-->\n\nA short subtitle\n\n# Agenda\n<!-- markdown-pptx:slide\nlayout: Title and Content\n-->\n\n- Context\n- Decision\n\n# Compare\n<!-- markdown-pptx:slide\nlayout: Two Content\n-->\n\nFirst approach\n\n***\n\nSecond approach\n\n# Next section\n<!-- markdown-pptx:slide\nlayout: Section Header\n-->\n\nA short introduction\n\n# Discussion\n<!-- markdown-pptx:slide\nlayout: Title Only\n-->\n\n#\n<!-- markdown-pptx:slide\nlayout: Blank\n-->\n"
+    "markdown": "# Welcome\n\n## A short subtitle\n\n# Agenda\n\n- Context\n- Decision\n\n# Compare\n\nFirst approach\n\n***\n\nSecond approach\n\n# Next section\n\n## A short introduction\n\n# Discussion\n<!-- markdown-pptx:slide\nlayout: Title Only\n-->\n\n#\n<!-- markdown-pptx:slide\nlayout: Blank\n-->\n"
+  },
+  {
+    "id": "deck-layout",
+    "description": "A deck-level default layout removes repeated slide layout comments. A hidden backup slide overrides the deck default.",
+    "requirements": "Packaged default template. Effective Two Content slides require exactly one top-level thematic break. Omit slide layout settings when they match the deck default.",
+    "markdown": "<!-- markdown-pptx:deck\nlayout: Two Content\n-->\n\n# Compare options\n\nFirst option\n\n***\n\nSecond option\n\n# Compare outcomes\n\nShort-term outcome\n\n***\n\nLong-term outcome\n\n# Backup details\n<!-- markdown-pptx:slide\nlayout: Title and Content\nhidden: true\nnotes: Keep these details available for questions.\n-->\n\nAdditional context for questions.\n"
   },
   {
     "id": "inline",
@@ -44,14 +50,14 @@
   {
     "id": "tables",
     "description": "Pipe tables and every native table style flag. Slide table metadata applies to all tables on that slide and requires at least one table.",
-    "requirements": "No external assets. One table per content area. Style flags do not calculate totals. Pipe alignment markers are accepted but do not override PowerPoint alignment.",
-    "markdown": "# Regional revenue\n<!-- markdown-pptx:slide\ntable:\n  header_row: true\n  total_row: true\n  first_column: true\n  last_column: false\n  banded_rows: true\n  banded_columns: false\n-->\n\n| Region | Revenue |\n| --- | ---: |\n| **North** | $50,000 |\n| South | $40,000 |\n| Total | $90,000 |\n\n# Regional comparison\n<!-- markdown-pptx:slide\nlayout: Two Content\ntable:\n  header_row: false\n  total_row: false\n  first_column: false\n  last_column: true\n  banded_rows: false\n  banded_columns: true\n-->\n\n| Region | Revenue |\n| --- | --- |\n| North | $50,000 |\n\n***\n\n| Region | Revenue |\n| --- | --- |\n| South | $40,000 |\n"
+    "requirements": "No external assets. One table per content area. Native zero-height rows size to content in PowerPoint. Style flags do not calculate totals. Markdown separator colons control horizontal alignment, default left. Every cell is centered vertically.",
+    "markdown": "# Regional revenue\n<!-- markdown-pptx:slide\ntable:\n  header_row: true\n  total_row: true\n  first_column: true\n  last_column: false\n  banded_rows: true\n  banded_columns: false\n-->\n\n| Region | Revenue |\n| --- | ---: |\n| **North** | $50,000 |\n| South | $40,000 |\n| Total | $90,000 |\n\n# Regional comparison\n<!-- markdown-pptx:slide\ntable:\n  header_row: false\n  total_row: false\n  first_column: false\n  last_column: true\n  banded_rows: false\n  banded_columns: true\n-->\n\n| Region | Revenue |\n| --- | --- |\n| North | $50,000 |\n\n***\n\n| Region | Revenue |\n| --- | --- |\n| South | $40,000 |\n\n# Column alignment\n\n| Region | Status | Revenue |\n| :--- | :---: | ---: |\n| North | Complete | $50,000 |\n\n# Rich cell content\n\n| Kind | Example |\n| --- | --- |\n| Emphasis | **Bold** and *italic* |\n| Code | `status` |\n| Link | [Guide](https://example.com \"Read the guide\") |\n"
   },
   {
     "id": "images",
-    "description": "Local and remote standalone images, picture alt text and optional titles, and a link around an image. Two Content allows a caption or explanation beside an image.",
+    "description": "Local and remote standalone images, picture alt text and optional titles, and a link around an image. Two Content allows a caption or explanation beside an image. Adjacent media_effects comments set editable borders, rounded corners, shadows, and reflections.",
     "requirements": "Supply photo.png beside the Markdown file. Replace the example.com URL with a reachable image URL. Relative paths resolve from the Markdown directory, or --base-dir for stdin. --no-remote-images rejects remote images. Images fit within their content area while preserving aspect ratio.",
-    "markdown": "# Local image\n\n![A descriptive alternative](photo.png \"Optional picture title\")\n\n# Linked image and context\n<!-- markdown-pptx:slide\nlayout: Two Content\n-->\n\n[![A descriptive alternative](photo.png \"Open project details\")](https://example.com/project)\n\n***\n\n## Project context\n\nThe image on the left opens the project page.\n\n# Remote image\n\n![A descriptive alternative](https://example.com/photo.png \"Remote picture\")\n"
+    "markdown": "# Local image\n\n![A descriptive alternative](photo.png \"Optional picture title\")\n\n# Linked image and context\n\n[![A descriptive alternative](photo.png \"Open project details\")](https://example.com/project)\n\n***\n\n## Project context\n\nThe image on the left opens the project page.\n\n# Remote image\n\n![A descriptive alternative](https://example.com/photo.png \"Remote picture\")\n\n# Native picture effects\n\n![Dashboard](photo.png \"Picture effects\")\n\n<!-- markdown-pptx:media_effects\nborder: \"1pt solid var(--accent-1)\"\nborder_radius: 8pt\nshadow: \"2pt 2pt 6pt rgba(0, 0, 0, 0.25)\"\nreflection: \"4pt 30%\"\n-->\n"
   },
   {
     "id": "backgrounds",
@@ -82,5 +88,23 @@
     "description": "Shared references across slides and titles, forward definitions, and hyperlink ScreenTips.",
     "requirements": "No external assets. Definitions do not create slides or visible content. First definition wins. Use the images topic for linked pictures and their separate titles.",
     "markdown": "[guide]: https://example.com/guide \"Read the full guide\"\n\n# [Documentation][guide]\n\nRead the [guide][] and the [next steps][next].\n\n# Follow up\n\nRevisit [guide] before starting.\n\n[**Project** *details*](https://example.com/project \"Open project details\")\n\n[next]: https://example.com/next \"Next steps\"\n"
+  },
+  {
+    "id": "effects",
+    "description": "Media and table effects at deck, slide, and element levels, with per-property inheritance and scoped table fills.",
+    "requirements": "Supply photo.png, poster.png, and an H.264 demo.mp4 beside the Markdown file. Unspecified table fills retain native styling. Total-row values come from the Markdown.",
+    "markdown": "<!-- markdown-pptx:deck\nmedia_effects:\n  border_radius: 8pt\n  shadow: \"2pt 2pt 6pt rgba(0, 0, 0, 0.25)\"\ntable_effects:\n  shadow: \"1pt 1pt 3pt rgba(0, 0, 0, 0.15)\"\ntable:\n  header_fill: var(--accent-1)\n  row_fill: var(--light-1)\n  banded_row_fill: var(--light-2)\n-->\n\n# Dashboard\n<!-- markdown-pptx:slide\nmedia_effects:\n  reflection: \"4pt 30%\"\n-->\n\n![Dashboard](photo.png)\n\n<!-- markdown-pptx:media_effects\nshadow: none\nborder: \"1pt solid var(--accent-2)\"\n-->\n\n# Native video frame\n\n[![Play demo](poster.png)](demo.mp4)\n\n<!-- markdown-pptx:video\nwidth: 80%\nmute: true\n-->\n\n<!-- markdown-pptx:media_effects\nborder_radius: 12pt\nreflection: \"4pt 20%\"\n-->\n\n# Revenue\n<!-- markdown-pptx:slide\ntable:\n  banded_row_fill: \"#EEF8FF\"\n  total_row: true\ntable_effects:\n  reflection: \"4pt 20%\"\n-->\n\n| Region | Revenue |\n| --- | ---: |\n| North | $50,000 |\n| South | $40,000 |\n| Total | $90,000 |\n\n<!-- markdown-pptx:table_effects\nborder: \"1pt solid var(--accent-2)\"\nshadow: none\n-->\n"
+  },
+  {
+    "id": "placement",
+    "description": "Media and table width and alignment at deck, slide, and element levels. Percentages use the assigned content box.",
+    "requirements": "Supply photo.png beside the Markdown file. Media defaults to center and top. Tables stay top aligned and keep native content-sized rows. YouTube playback needs internet access.",
+    "markdown": "<!-- markdown-pptx:deck\nmedia_layout:\n  align: left\ntable_layout:\n  width: 80%\n-->\n\n# Dashboard\n<!-- markdown-pptx:slide\nmedia_layout:\n  valign: middle\n-->\n\n![Dashboard](photo.png)\n\n<!-- markdown-pptx:media_layout\nwidth: 75%\nalign: right\n-->\n\n# Revenue\n<!-- markdown-pptx:slide\ntable_layout:\n  align: right\n-->\n\nContext for the table.\n\n***\n\n| Region | Revenue |\n| --- | ---: |\n| North | $50,000 |\n\n<!-- markdown-pptx:table_layout\nwidth: 50%\n-->\n\n# Online demo\n\n[Watch Big Buck Bunny](https://www.youtube.com/watch?v=aqz-KE-bpKQ)\n\n<!-- markdown-pptx:media_layout\nwidth: 50%\nalign: center\nvalign: bottom\n-->\n"
+  },
+  {
+    "id": "heading-layouts",
+    "description": "Vanilla headings infer title and section layouts. Multiple H2s remain ordinary content. Slide layouts override inference, which overrides deck defaults.",
+    "requirements": "No external assets. ATX and Setext headings have the same behavior. Inferred subtitles inherit the template.",
+    "markdown": "# Launch plan\n## From prototype to production\n\n# Delivery\n## Scope, dates, and ownership\n\n# Milestones\n\n- Design approved\n- Launch scheduled\n\n# Multiple content headings\n\n## First\n\n## Second\n\n# Explicit content layout\n<!-- markdown-pptx:slide\nlayout: Title and Content\n-->\n\n## Keep this as a body heading\n"
   }
 ]

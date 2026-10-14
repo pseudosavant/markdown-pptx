@@ -48,6 +48,43 @@ def test_two_content_commonmark_separators(separator, layout):
     assert slide.secondary_body.paragraphs[0].fragments[0].text == "Right"
 
 
+@pytest.mark.parametrize("separator", ["***", "---", "___", "* * *", "-------"])
+@pytest.mark.parametrize("deck_layout", [None, "Title and Content", "Title Slide", "Section Header", "Title Only"])
+def test_single_top_level_rule_infers_two_content_before_deck_default(separator, deck_layout, tmp_path):
+    metadata = f"<!-- markdown-pptx:deck\nlayout: {deck_layout}\n-->\n\n" if deck_layout else ""
+    source = f"{metadata}# Compare\n\nLeft\n\n{separator}\n\nRight\n"
+    deck = parse_deck(source, input_path=None, source_name="deck.md")
+    assert deck.slides[0].layout == "Two Content"
+    assert deck.slides[0].secondary_body is not None
+    slide = render(deck, tmp_path).slides[0]
+    assert slide.slide_layout.name == "Two Content"
+    assert [shape.text for shape in content_shapes(slide)] == ["Left", "Right"]
+
+
+@pytest.mark.parametrize("body", ["Left\n\n***\n\nMiddle\n\n___\n\nRight", "> ***", "- Item\n\n  ***"])
+def test_inferred_two_content_still_rejects_multiple_and_nested_rules(body):
+    with pytest.raises(UnsupportedContentError):
+        parse_deck(f"# Compare\n\n{body}\n", input_path=None, source_name="deck.md")
+
+
+def test_rules_in_code_and_setext_underlines_do_not_infer_two_content():
+    source = "# Code\n\n```markdown\n***\n```\n\n# Heading\n\nSubtitle\n---\n"
+    deck = parse_deck(source, input_path=None, source_name="deck.md")
+    assert [slide.layout for slide in deck.slides] == ["Title and Content", "Section Header"]
+    assert all(slide.secondary_body is None for slide in deck.slides)
+    assert deck.slides[1].body.paragraphs[0].kind == "subtitle"
+
+
+def test_slide_metadata_without_layout_still_allows_inference():
+    deck = parse_deck(
+        "# Compare\n<!-- markdown-pptx:slide\nnotes: A comparison\n-->\n\nLeft\n\n***\n\nRight\n",
+        input_path=None,
+        source_name="deck.md",
+    )
+    assert deck.slides[0].layout == "Two Content"
+    assert deck.slides[0].notes == "A comparison"
+
+
 @pytest.mark.parametrize("left,right", [("", "Right"), ("Left", ""), ("", "")])
 def test_two_content_empty_sides_render(left, right, tmp_path):
     deck = parse_two(f"{left}\n\n***\n\n{right}")
@@ -175,7 +212,7 @@ def test_every_example_is_copyable_and_renderable(topic, tmp_path):
     source = stdout.getvalue()
     deck = parse_deck(source, input_path=None, source_name=f"{topic}.md")
     Image.new("RGB", (40, 20), "blue").save(tmp_path / "photo.png")
-    if topic == "videos":
+    if topic in {"videos", "effects"}:
         shutil.copy(Path(__file__).parent / "assets/demo.mp4", tmp_path / "demo.mp4")
         Image.new("RGB", (400, 300), "red").save(tmp_path / "poster.png")
 

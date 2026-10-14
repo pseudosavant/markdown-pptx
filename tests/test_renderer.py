@@ -31,6 +31,358 @@ TABLE_STYLE_MEDIUM_1_ACCENT_1 = "{B301B821-A1FF-4177-AEE7-76D212191A09}"
 VIDEO_FIXTURE = Path(__file__).parent / "assets" / "demo.mp4"
 
 
+def test_table_cells_preserve_inline_markup_links_and_inherited_native_styling(tmp_path: Path) -> None:
+    deck = parse_deck(
+        "# Table\n<!-- markdown-pptx:slide\ntable:\n  first_column: true\n  total_row: true\n-->\n\n"
+        "| Native header | **Bold header** |\n| :--- | ---: |\n"
+        "| Plain | **Bold** and *italic* |\n"
+        "| Code | `inline code` |\n"
+        "| Strike | ~~Removed~~ |\n"
+        "| Baselines | H~2~O and x^2^ |\n"
+        '| Link | [**Bold** and *italic*](https://example.com "Read the guide") |\n'
+        "| Total | 10 |\n",
+        input_path=None,
+        source_name="rich-table.md",
+    )
+    output = tmp_path / "rich-table.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    shape = next(shape for shape in Presentation(output).slides[0].shapes if shape.has_table)
+    table = shape.table
+    plain = table.cell(1, 0).text_frame.paragraphs[0].runs[0]
+    assert plain.font.bold is None and plain.font.italic is None
+    assert plain.font.size is None and plain.font.name is None
+    assert table.cell(0, 0).text_frame.paragraphs[0].runs[0].font.bold is None
+    assert table.cell(0, 1).text_frame.paragraphs[0].runs[0].font.bold is True
+    rich = table.cell(1, 1).text_frame.paragraphs[0].runs
+    assert rich[0].font.bold is True and rich[-1].font.italic is True
+    assert table.cell(2, 1).text_frame.paragraphs[0].runs[0].font.name == "Consolas"
+    assert table.cell(3, 1).text_frame.paragraphs[0].runs[0]._r.xpath("./a:rPr")[0].get("strike") == "sngStrike"
+    baselines = table.cell(4, 1).text_frame.paragraphs[0].runs
+    assert {run.font.baseline for run in baselines} >= {-0.25, 0.3}
+    assert all(run.font.size is None for run in baselines)
+    links = table.cell(5, 1).text_frame.paragraphs[0].runs
+    assert all(run.hyperlink.address == "https://example.com" for run in links)
+    assert all(run.hyperlink.screen_tip == "Read the guide" for run in links)
+    assert links[0].font.bold is True and links[-1].font.italic is True
+    assert table.first_col and table.first_row and table.last_row and table.horz_banding
+    assert all(row.height == 0 for row in table.rows)
+    assert [node.get("algn") for node in shape._element.xpath(".//a:pPr")] == ["l", "r"] * 7
+    assert not shape._element.xpath(".//a:rPr[@sz] | .//a:rPr/a:solidFill")
+
+
+def test_table_uses_zero_height_rows_and_markdown_cell_alignment(tmp_path: Path) -> None:
+    deck = parse_deck(
+        "# Table\n\n| Default | Left | Center | Right |\n| --- | :--- | :---: | ---: |\n| A | B | C | D |\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+    rows = xml.findall(".//a:tbl/a:tr", NS)
+    assert [row.attrib["h"] for row in rows] == ["0", "0"]
+    for row in rows:
+        cells = row.findall("a:tc", NS)
+        assert [cell.find("a:tcPr", NS).attrib["anchor"] for cell in cells] == ["ctr"] * 4
+        assert [cell.find(".//a:pPr", NS).attrib["algn"] for cell in cells] == ["l", "l", "ctr", "r"]
+    frame = xml.find(".//p:graphicFrame/p:xfrm/a:ext", NS)
+    assert frame.attrib["cy"] == "0"
+    rendered_slide = Presentation(output).slides[0]
+    table_shape = next(shape for shape in rendered_slide.shapes if shape.has_table)
+    placeholder = rendered_slide.slide_layout.placeholders[1]
+    assert table_shape.width == placeholder.width
+    assert table_shape.top == placeholder.top
+    assert rendered_slide.placeholders[1].has_table
+    assert len(rendered_slide.shapes) == 2
+
+
+@pytest.mark.parametrize("layout", ["Title and Content", "Two Content"])
+@pytest.mark.parametrize(
+    ("content", "shape_tag"),
+    [
+        ("| Item | Value |\n| --- | --- |\n| A | B |", "graphicFrame"),
+        ("![Photo](photo.png)", "pic"),
+        ("[Play](demo.mp4)", "pic"),
+        ("[Watch](https://www.youtube.com/watch?v=aqz-KE-bpKQ)", "pic"),
+    ],
+    ids=["table", "image", "local-video", "youtube"],
+)
+def test_non_text_content_replaces_its_layout_placeholder(tmp_path: Path, layout, content, shape_tag) -> None:
+    (tmp_path / "photo.png").write_bytes(PNG_BYTES)
+    shutil.copy(VIDEO_FIXTURE, tmp_path / "demo.mp4")
+    body = f"Text stays editable.\n\n***\n\n{content}" if layout == "Two Content" else content
+    deck = parse_deck(
+        f"# Content\n<!-- markdown-pptx:slide\nlayout: {layout}\n-->\n\n{body}\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+    index = "2" if layout == "Two Content" else "1"
+    tree = xml.find("p:cSld/p:spTree", NS)
+    content_shapes = [shape for shape in tree if shape.find(f".//p:ph[@idx='{index}']", NS) is not None]
+    assert len(content_shapes) == 1
+    assert content_shapes[0].tag == f"{{{NS['p']}}}{shape_tag}"
+    slide = Presentation(output).slides[0]
+    assert len(slide.shapes) == (3 if layout == "Two Content" else 2)
+    assert slide.placeholders[int(index)].name.startswith("MarkdownSlides")
+    if layout == "Two Content":
+        assert slide.placeholders[1].text == "Text stays editable."
+    if content == "[Play](demo.mp4)":
+        shape_id = content_shapes[0].find("p:nvPicPr/p:cNvPr", NS).attrib["id"]
+        assert xml.find(f".//p:spTgt[@spid='{shape_id}']", NS) is not None
+
+
+def test_hidden_slides_remain_in_presentation_with_native_visibility_flag(tmp_path: Path) -> None:
+    deck = parse_deck(
+        "# Visible\n\nBody\n\n# Backup\n<!-- markdown-pptx:slide\nhidden: true\nnotes: Backup notes\n-->\n\nExtra\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    assert len(Presentation(output).slides) == 2
+    with zipfile.ZipFile(output) as archive:
+        visible = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+        hidden = ET.fromstring(archive.read("ppt/slides/slide2.xml"))
+    assert "show" not in visible.attrib
+    assert hidden.attrib["show"] == "0"
+    assert "Extra" in "".join(node.text or "" for node in hidden.findall(".//a:t", NS))
+    assert Presentation(output).slides[1].notes_slide.notes_text_frame.text == "Backup notes"
+
+
+def test_deck_default_layout_selects_real_layout_with_slide_override(tmp_path: Path) -> None:
+    deck = parse_deck(
+        "<!-- markdown-pptx:deck\nlayout: Two Content\n-->\n\n# Split\n\nLeft\n\n***\n\nRight\n"
+        "# Single\n<!-- markdown-pptx:slide\nlayout: Title and Content\n-->\n\nBody\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    assert [slide.slide_layout.name for slide in Presentation(output).slides] == ["Two Content", "Title and Content"]
+
+
+def _render_image_settings(tmp_path: Path, settings: str):
+    (tmp_path / "photo.png").write_bytes(PNG_BYTES)
+    deck = parse_deck(
+        '# Picture\n\n[![Description](photo.png "Picture title")](https://example.com "ScreenTip")\n\n'
+        f"<!-- markdown-pptx:media_effects\n{settings}\n-->\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    return output
+
+
+def test_image_effects_are_native_editable_and_keep_original_image(tmp_path: Path) -> None:
+    output = _render_image_settings(
+        tmp_path,
+        'border: "1.5pt solid var(--accent-1)"\nborder_radius: 8pt\n'
+        'shadow: "2pt 2pt 6pt rgba(0, 0, 0, 0.25)"\nreflection: 4pt 30%',
+    )
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+        assert archive.read("ppt/media/image1.png") == PNG_BYTES
+    picture_xml = xml.find(".//p:pic", NS)
+    line = picture_xml.find("p:spPr/a:ln", NS)
+    assert line.attrib["w"] == "19050"
+    assert line.find("a:solidFill/a:schemeClr", NS).attrib["val"] == "accent1"
+    geometry = picture_xml.find("p:spPr/a:prstGeom", NS)
+    assert geometry.attrib["prst"] == "roundRect"
+    assert int(geometry.find("a:avLst/a:gd", NS).attrib["fmla"].split()[1]) > 0
+    shadow = picture_xml.find("p:spPr/a:effectLst/a:outerShdw", NS)
+    assert shadow.attrib["dir"] == "2700000"
+    assert shadow.attrib["blurRad"] == "76200"
+    assert shadow.find("a:srgbClr/a:alpha", NS).attrib["val"] == "25000"
+    reflection = picture_xml.find("p:spPr/a:effectLst/a:reflection", NS)
+    assert reflection.attrib["endPos"] == "30000"
+    assert reflection.attrib["dist"] == "50800"
+    assert reflection.attrib["stA"] == "35000"
+    assert reflection.attrib["endA"] == "0"
+    assert reflection.attrib["sy"] == "-100000"
+    slide = Presentation(output).slides[0]
+    picture = slide.placeholders[1]
+    assert picture.alt_text == "Description"
+    assert picture.alt_text_title == "Picture title"
+    assert picture.click_action.hyperlink.address == "https://example.com"
+    assert picture.click_action.hyperlink.screen_tip == "ScreenTip"
+    assert len(slide.shapes) == 2
+
+
+def test_image_border_alpha_and_theme_shadow(tmp_path: Path) -> None:
+    output = _render_image_settings(tmp_path, 'border: "2px dashed #1234"\nshadow: 0 2pt var(--accent-2)')
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+    line = xml.find(".//p:pic/p:spPr/a:ln", NS)
+    assert line.find("a:prstDash", NS).attrib["val"] == "dash"
+    color = line.find("a:solidFill/a:srgbClr", NS)
+    assert color.attrib["val"] == "112233"
+    assert color.find("a:alpha", NS).attrib["val"] == "26667"
+    assert xml.find(".//a:outerShdw/a:schemeClr", NS).attrib["val"] == "accent2"
+
+
+def test_table_effects_are_native_and_border_changes_only_outer_edges(tmp_path: Path) -> None:
+    deck = parse_deck(
+        '<!-- markdown-pptx:deck\ntable_effects:\n  shadow: "2pt 2pt 6pt rgba(0, 0, 0, 0.25)"\n-->\n'
+        "# Table\n<!-- markdown-pptx:slide\ntable_effects:\n  reflection: 4pt 20%\n-->\n\n"
+        "| A | B | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |\n\n"
+        '<!-- markdown-pptx:table_effects\nborder: "2pt dashed var(--accent-2)"\n-->\n',
+        input_path=None,
+        source_name="table.md",
+    )
+    output = tmp_path / "table.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+    properties = xml.find(".//a:tbl/a:tblPr", NS)
+    assert properties.find("a:effectLst/a:outerShdw/a:srgbClr/a:alpha", NS).attrib["val"] == "25000"
+    assert properties.find("a:effectLst/a:reflection", NS).attrib["endPos"] == "20000"
+    rows = xml.findall(".//a:tbl/a:tr", NS)
+    expected = [
+        [{"lnL", "lnT"}, {"lnT"}, {"lnR", "lnT"}],
+        [{"lnL"}, set(), {"lnR"}],
+        [{"lnL", "lnB"}, {"lnB"}, {"lnR", "lnB"}],
+    ]
+    for row_index, row in enumerate(rows):
+        assert row.attrib["h"] == "0"
+        for column_index, cell in enumerate(row.findall("a:tc", NS)):
+            lines = [node for node in cell.find("a:tcPr", NS) if node.tag.rsplit("}", 1)[-1].startswith("ln")]
+            assert {node.tag.rsplit("}", 1)[-1] for node in lines} == expected[row_index][column_index]
+            for line in lines:
+                assert line.attrib["w"] == "25400"
+                assert line.find("a:solidFill/a:schemeClr", NS).attrib["val"] == "accent2"
+                assert line.find("a:prstDash", NS).attrib["val"] == "dash"
+    assert len(Presentation(output).slides[0].shapes) == 2
+
+
+@pytest.mark.parametrize("link", ["[Play](demo.mp4)", "[Watch](https://www.youtube.com/watch?v=aqz-KE-bpKQ)"])
+def test_video_media_effects_preserve_native_media_and_placement(tmp_path: Path, link) -> None:
+    shutil.copy(VIDEO_FIXTURE, tmp_path / "demo.mp4")
+    deck = parse_deck(
+        '<!-- markdown-pptx:deck\nmedia_effects:\n  border_radius: 8pt\n  shadow: "2pt 2pt 6pt"\n-->\n'
+        f"# Video\n\n{link}\n\n<!-- markdown-pptx:media_effects\nreflection: 4pt 30%\n"
+        'border: "1pt solid var(--accent-2)"\n-->\n',
+        input_path=None,
+        source_name="video.md",
+    )
+    output = tmp_path / "video.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+        media = [name for name in archive.namelist() if name.endswith(".mp4")]
+    picture = xml.find(".//p:pic", NS)
+    assert picture.find("p:spPr/a:prstGeom", NS).attrib["prst"] == "roundRect"
+    assert picture.find("p:spPr/a:effectLst/a:outerShdw", NS) is not None
+    assert picture.find("p:spPr/a:effectLst/a:reflection", NS).attrib["dist"] == "50800"
+    assert picture.find("p:spPr/a:ln", NS).attrib["w"] == "12700"
+    shape_id = picture.find("p:nvPicPr/p:cNvPr", NS).attrib["id"]
+    assert xml.find(f".//p:spTgt[@spid='{shape_id}']", NS) is not None
+    assert picture.find("p:nvPicPr/p:nvPr/p:ph", NS).attrib["idx"] == "1"
+    assert bool(media) == link.endswith("(demo.mp4)")
+
+
+@pytest.mark.parametrize("header,banded", [(True, True), (True, False), (False, True)])
+def test_table_color_inheritance_respects_style_flags_and_preserves_total_row(tmp_path: Path, header, banded) -> None:
+    deck = parse_deck(
+        '<!-- markdown-pptx:deck\ntable:\n  header_fill: "#112233"\n  row_fill: var(--light-1)\n'
+        '  banded_row_fill: "#223344"\n-->\n# Table\n<!-- markdown-pptx:slide\ntable:\n'
+        f"  header_row: {str(header).lower()}\n  banded_rows: {str(banded).lower()}\n"
+        '  banded_row_fill: "#334455"\n  total_row: true\n-->\n\n'
+        "| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n| Total | 6 |\n",
+        input_path=None,
+        source_name="table.md",
+    )
+    output = tmp_path / "table.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+    properties = xml.find(".//a:tbl/a:tblPr", NS)
+    assert properties.attrib["lastRow"] == "1"
+    assert properties.find("a:tableStyleId", NS).text == TABLE_STYLE_MEDIUM_1_ACCENT_1
+    for index, row in enumerate(xml.findall(".//a:tbl/a:tr", NS)):
+        for cell in row.findall("a:tc", NS):
+            fill = cell.find("a:tcPr/a:solidFill", NS)
+            if index == 3:
+                assert fill is None
+            elif index == 0 and header:
+                assert fill.find("a:srgbClr", NS).attrib["val"] == "112233"
+            elif banded and (index - int(header)) % 2 == 0:
+                assert fill.find("a:srgbClr", NS).attrib["val"] == "334455"
+            else:
+                assert fill.find("a:schemeClr", NS).attrib["val"] == "lt1"
+
+
+def test_default_table_has_no_explicit_fill_border_or_effect_overrides(tmp_path: Path) -> None:
+    deck = parse_deck("# Table\n\n| A | B |\n| --- | --- |\n| Total | 3 |\n", input_path=None, source_name="table.md")
+    output = tmp_path / "table.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+    assert xml.find(".//a:tblPr/a:effectLst", NS) is None
+    assert xml.find(".//a:tcPr/a:solidFill", NS) is None
+    assert xml.find(".//a:tcPr/a:lnL", NS) is None
+    assert "lastRow" not in xml.find(".//a:tblPr", NS).attrib
+    assert not deck.slides[0].table_options.total_row
+
+
+def test_yaml_effects_source_renders_as_editable_code(tmp_path: Path) -> None:
+    code = "border_radius: 0\nshadow: none\n"
+    deck = parse_deck(f"# Effects\n\n```yaml\n{code}```\n", input_path=None, source_name="code.md")
+    output = tmp_path / "code.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    assert Presentation(output).slides[0].placeholders[1].text == code.rstrip("\n").replace("\n", "\v")
+
+
+def test_image_none_effects_and_radius_clamping(tmp_path: Path) -> None:
+    output = _render_image_settings(tmp_path, "border: none\nshadow: none\nreflection: none\nborder_radius: 100in")
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+    assert xml.find(".//p:pic/p:spPr/a:ln/a:noFill", NS) is not None
+    assert len(xml.find(".//p:pic/p:spPr/a:effectLst", NS)) == 0
+    assert xml.find(".//p:pic/p:spPr/a:prstGeom/a:avLst/a:gd", NS).attrib["fmla"] == "val 50000"
+
+
+@pytest.mark.parametrize("size", [(400, 200), (200, 400), (400, 400)], ids=["wide", "tall", "square"])
+def test_image_effects_keep_picture_size_and_position_and_allow_overflow(tmp_path: Path, size) -> None:
+    Image.new("RGB", size, "blue").save(tmp_path / "photo.png")
+    settings = [
+        "",
+        'border: "12pt solid #000000"',
+        'shadow: "-20pt 30pt 60pt rgba(0, 0, 0, 0.25)"',
+        "reflection: 100in 100%",
+        'border: "12pt solid #000000"\nborder_radius: 12pt\n'
+        'shadow: "2pt 2pt 6pt rgba(0, 0, 0, 0.25)"\nreflection: 4pt 30%',
+    ]
+    source = "\n".join(
+        f"# Picture {index}\n\n![Photo](photo.png)\n\n"
+        + (f"<!-- markdown-pptx:media_effects\n{effect}\n-->\n" if effect else "")
+        for index, effect in enumerate(settings)
+    )
+    deck = parse_deck(source, input_path=tmp_path / "deck.md", source_name="deck.md")
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    prs = Presentation(output)
+    pictures = [slide.placeholders[1] for slide in prs.slides]
+    original = pictures[0]
+    assert all(
+        (picture.left, picture.top, picture.width, picture.height)
+        == (original.left, original.top, original.width, original.height)
+        for picture in pictures
+    )
+    assert all(len(slide.shapes) == 2 for slide in prs.slides)
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide4.xml"))
+    reflection = xml.find(".//a:reflection", NS)
+    assert reflection.attrib["dist"] == "91440000"
+    assert reflection.attrib["endPos"] == "100000"
+    assert original.top + original.height + int(reflection.attrib["dist"]) > prs.slide_height
+
+
 def test_local_video_embeds_poster_and_playback_settings(tmp_path: Path) -> None:
     shutil.copy(VIDEO_FIXTURE, tmp_path / "demo.mp4")
     deck = parse_deck(
@@ -483,6 +835,11 @@ color_scheme:
     assert prs.slide_masters[0].background.fill.type == 3
     assert round(prs.slide_masters[0].background.fill.gradient_angle) == 90
     assert "MarkdownSlidesImage" in names
+    picture = next(shape for shape in prs.slides[0].shapes if shape.name == "MarkdownSlidesImage")
+    area = prs.slides[0].slide_layout.placeholders[1]
+    assert picture.top == area.top
+    assert picture.left == int(area.left + (area.width - picture.width) / 2)
+    assert picture._element.xpath("./p:spPr/a:xfrm/a:off")[0].get("y") == str(area.top)
 
 
 def test_render_remote_image_with_fake_downloader(tmp_path: Path) -> None:

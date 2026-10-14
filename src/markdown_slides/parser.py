@@ -2,14 +2,22 @@ from __future__ import annotations
 
 import colorsys
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml
 
 from markdown_slides.assets import load_color_schemes
+from markdown_slides.effect_settings import TABLE_COLOR_KEYS, load_settings_yaml, merge_effects, parse_effect_values
 from markdown_slides.errors import ParseError, UnsupportedContentError
-from markdown_slides.markdown_body import MD, _html_text, parse_body_regions, parse_inline_children
+from markdown_slides.layout_settings import merge_layouts, parse_layout_values
+from markdown_slides.markdown_body import (
+    MD,
+    _html_text,
+    _validate_metadata_comments,
+    parse_body_regions,
+    parse_inline_children,
+)
 from markdown_slides.models import (
     Background,
     BodyContent,
@@ -21,10 +29,17 @@ from markdown_slides.models import (
     Slide,
     TableOptions,
     TextColors,
+    VideoBlock,
     normalize_layout_name,
 )
 
 DOCUMENT_KEYS = {
+    "media_layout",
+    "table_layout",
+    "media_effects",
+    "table_effects",
+    "table",
+    "layout",
     "aspect_ratio",
     "fonts",
     "color_scheme",
@@ -34,6 +49,11 @@ DOCUMENT_KEYS = {
     "code_highlighting",
 }
 SLIDE_KEYS = {
+    "media_layout",
+    "table_layout",
+    "media_effects",
+    "table_effects",
+    "hidden",
     "master",
     "layout",
     "background",
@@ -134,6 +154,18 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
     color_scheme = _parse_color_scheme(document_config)
     document_background = _parse_background(document_config.get("background"), line=1)
     code_highlighting = _parse_code_highlighting(document_config, source_name=source_name, line=1) or "default"
+    document_layout = _parse_layout(document_config.get("layout"), source_name=source_name, line=1, document=True)
+    document_media_effects = _parse_effect_defaults(document_config, "media_effects", source_name, 1)
+    document_table_effects = _parse_effect_defaults(document_config, "table_effects", source_name, 1)
+    document_media_layout = _parse_object_layout(document_config, "media_layout", source_name, 1)
+    document_table_layout = _parse_object_layout(document_config, "table_layout", source_name, 1)
+    document_table_options = _parse_table_options(
+        document_config.get("table"),
+        configured="table" in document_config,
+        line=1,
+        slide_index=None,
+        source_name=source_name,
+    )
 
     parsed_slides: list[Slide] = []
     for slide_index, raw_slide in enumerate(slides, start=1):
@@ -144,20 +176,29 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
             slide_index=slide_index,
             source_name=source_name,
         )
-        layout = raw_slide.config.get("layout")
-        if layout is not None and not isinstance(layout, str):
+        media_effects = _parse_effect_defaults(
+            raw_slide.config, "media_effects", source_name, raw_slide.line_number, slide_index
+        )
+        table_effects = _parse_effect_defaults(
+            raw_slide.config, "table_effects", source_name, raw_slide.line_number, slide_index
+        )
+        media_layout = _parse_object_layout(
+            raw_slide.config, "media_layout", source_name, raw_slide.line_number, slide_index
+        )
+        table_layout = _parse_object_layout(
+            raw_slide.config, "table_layout", source_name, raw_slide.line_number, slide_index
+        )
+        slide_layout = _parse_layout(
+            raw_slide.config.get("layout"),
+            source_name=source_name,
+            line=raw_slide.line_number,
+            slide_index=slide_index,
+        )
+        hidden = raw_slide.config.get("hidden", False)
+        if not isinstance(hidden, bool):
             raise ParseError(
-                "invalid_slide_layout",
-                "Slide layout must be a string.",
-                line=raw_slide.line_number,
-                slide_index=slide_index,
-                input_path=source_name,
-            )
-        normalized_layout = normalize_layout_name(layout) if isinstance(layout, str) else None
-        if normalized_layout is not None and normalized_layout not in SUPPORTED_LAYOUTS:
-            raise ParseError(
-                "unsupported_layout",
-                f"Unsupported layout '{layout}'.",
+                "invalid_hidden",
+                "hidden must be true or false.",
                 line=raw_slide.line_number,
                 slide_index=slide_index,
                 input_path=source_name,
@@ -186,6 +227,7 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
             line=raw_slide.line_number,
             slide_index=slide_index,
             source_name=source_name,
+            defaults=document_table_options,
         )
         slide_background = _parse_background(
             raw_slide.config.get("background"),
@@ -194,18 +236,43 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
         slide_text_colors = _parse_text_colors(raw_slide.config, line=raw_slide.line_number)
         regions = parse_body_regions(
             raw_slide.body_markdown,
-            two_content=normalized_layout == "Two Content",
+            two_content=slide_layout == "Two Content",
             source_name=source_name,
             slide_index=slide_index,
             base_line=raw_slide.body_line_number,
             references=references,
+            infer_two_content=slide_layout is None,
         )
         body = regions[0]
-        if normalized_layout is None:
-            if raw_slide.title == "" and body.is_empty:
-                normalized_layout = "Blank"
-            else:
-                normalized_layout = "Title and Content"
+        heading_only = _is_heading_slide_body(body)
+        if slide_layout is not None:
+            normalized_layout = slide_layout
+        elif len(regions) == 2:
+            normalized_layout = "Two Content"
+        elif raw_slide.title and heading_only:
+            normalized_layout = "Title Slide" if slide_index == 1 else "Section Header"
+        else:
+            normalized_layout = document_layout or (
+                "Blank" if not raw_slide.title and body.is_empty else "Title and Content"
+            )
+        if normalized_layout == "Two Content" and len(regions) != 2:
+            raise UnsupportedContentError(
+                "Two Content slides require exactly one top-level horizontal rule separating the two content areas.",
+                slide_index=slide_index,
+                line=raw_slide.body_line_number,
+                input_path=source_name,
+            )
+        if normalized_layout in {"Title Slide", "Section Header"} and heading_only and body.paragraphs:
+            body.paragraphs[0] = replace(body.paragraphs[0], kind="subtitle", heading_level=None)
+        for region in regions:
+            for item in [*region.images, *region.videos]:
+                item.effects = merge_effects(document_media_effects, media_effects, item.effects)
+                item.layout = merge_layouts(document_media_layout, media_layout, item.layout)
+                if isinstance(item, VideoBlock) and item.layout is not None:
+                    item.width, item.align, item.valign = item.layout.width, item.layout.align, item.layout.valign
+            for table in region.tables:
+                table.effects = merge_effects(document_table_effects, table_effects, table.effects)
+                table.layout = merge_layouts(document_table_layout, table_layout, table.layout)
         for region in regions:
             _validate_layout_content(
                 layout=normalized_layout,
@@ -238,6 +305,11 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
                 line_number=raw_slide.line_number,
                 title_fragments=raw_slide.title_fragments,
                 secondary_body=regions[1] if len(regions) == 2 else None,
+                hidden=hidden,
+                media_effects=media_effects,
+                table_effects=table_effects,
+                media_layout=media_layout,
+                table_layout=table_layout,
                 code_highlighting=_parse_code_highlighting(
                     raw_slide.config, source_name=source_name, line=raw_slide.line_number, slide_index=slide_index
                 ),
@@ -255,7 +327,52 @@ def parse_deck(text: str, *, input_path: Path | None, source_name: str) -> Deck:
         background=document_background,
         slides=parsed_slides,
         code_highlighting=code_highlighting,
+        layout=document_layout or "Title and Content",
+        media_effects=document_media_effects,
+        table_effects=document_table_effects,
+        table_options=document_table_options,
+        media_layout=document_media_layout,
+        table_layout=document_table_layout,
     )
+
+
+def _is_heading_slide_body(body: BodyContent) -> bool:
+    if body.is_empty:
+        return True
+    if body.has_non_text or len(body.paragraphs) != 1:
+        return False
+    paragraph = body.paragraphs[0]
+    return (
+        paragraph.kind == "heading"
+        and paragraph.heading_level == 2
+        and paragraph.quote_depth == 0
+        and paragraph.list_context is None
+    )
+
+
+def _parse_layout(
+    value: object, *, source_name: str, line: int, slide_index: int | None = None, document: bool = False
+) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ParseError(
+            "invalid_document_layout" if document else "invalid_slide_layout",
+            "Deck layout must be a string." if document else "Slide layout must be a string.",
+            line=line,
+            slide_index=slide_index,
+            input_path=source_name,
+        )
+    layout = normalize_layout_name(value)
+    if layout not in SUPPORTED_LAYOUTS:
+        raise ParseError(
+            "unsupported_layout",
+            f"Unsupported layout '{value}'.",
+            line=line,
+            slide_index=slide_index,
+            input_path=source_name,
+        )
+    return layout
 
 
 def _parse_code_highlighting(
@@ -275,16 +392,34 @@ def _parse_code_highlighting(
     return value
 
 
+def _parse_effect_defaults(config, category, source_name, line, slide_index=None):
+    if category not in config:
+        return None
+    return parse_effect_values(
+        config[category], category=category, source_name=source_name, line=line, slide_index=slide_index
+    )
+
+
+def _parse_object_layout(config, category, source_name, line, slide_index=None):
+    if category not in config:
+        return None
+    return parse_layout_values(
+        config[category], category=category, source_name=source_name, line=line, slide_index=slide_index
+    )
+
+
 def _parse_table_options(
     value: object,
     *,
     configured: bool,
     line: int,
-    slide_index: int,
+    slide_index: int | None,
     source_name: str,
+    defaults: TableOptions | None = None,
 ) -> TableOptions:
+    inherited = {key: getattr(defaults, key) for key in TABLE_OPTION_DEFAULTS} if defaults else TABLE_OPTION_DEFAULTS
     if not configured:
-        return TableOptions()
+        return TableOptions(**inherited)
     if not isinstance(value, dict):
         raise ParseError(
             "invalid_table_options",
@@ -301,7 +436,7 @@ def _parse_table_options(
             slide_index=slide_index,
             input_path=source_name,
         )
-    unknown = sorted(set(value) - set(TABLE_OPTION_DEFAULTS))
+    unknown = sorted(set(value) - (set(TABLE_OPTION_DEFAULTS) | TABLE_COLOR_KEYS))
     if unknown:
         raise ParseError(
             "unknown_table_option_keys",
@@ -310,8 +445,8 @@ def _parse_table_options(
             slide_index=slide_index,
             input_path=source_name,
         )
-    options = TABLE_OPTION_DEFAULTS | value
-    invalid = [key for key, option in value.items() if not isinstance(option, bool)]
+    options = inherited | value
+    invalid = [key for key, option in value.items() if key in TABLE_OPTION_DEFAULTS and not isinstance(option, bool)]
     if invalid:
         raise ParseError(
             "invalid_table_options",
@@ -320,6 +455,25 @@ def _parse_table_options(
             slide_index=slide_index,
             input_path=source_name,
         )
+    for key in TABLE_COLOR_KEYS & value.keys():
+        if not isinstance(value[key], str):
+            raise ParseError(
+                "invalid_table_color",
+                f"{key} must be a color string.",
+                line=line,
+                slide_index=slide_index,
+                input_path=source_name,
+            )
+        try:
+            options[key] = _parse_color_expression(value[key])
+        except ParseError as exc:
+            raise ParseError(
+                "invalid_table_color",
+                f"Invalid {key}: {exc}",
+                line=line,
+                slide_index=slide_index,
+                input_path=source_name,
+            ) from exc
     return TableOptions(**options)
 
 
@@ -358,6 +512,7 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
     _reject_legacy_front_matter(lines, index, DOCUMENT_KEYS, source_name=source_name)
     if lines and _metadata_scope(lines[0]) == "deck":
         document_config, index = _parse_metadata_comment(lines, 0, DOCUMENT_KEYS, source_name=source_name)
+    preamble_line = index + 1
 
     slides: list[RawSlide] = []
     current_title: str | None = None
@@ -400,6 +555,12 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
                 title_source = "\n".join(candidate[setext_start:])
                 title_line = index - (len(current_body) - setext_start) + 1
                 prefix = current_body[:setext_start]
+            _validate_metadata_comments(
+                MD.parse(title_source),
+                source_name=source_name,
+                slide_index=len(slides) + (2 if current_title is not None else 1),
+                base_line=title_line,
+            )
             title, title_fragments = _heading_payload(title_source)
             if current_title is not None:
                 slides.append(
@@ -414,12 +575,12 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
                     )
                 )
                 MD.parse("\n".join(prefix), reference_env)
-            elif _visible_preamble(prefix, reference_env):
+            elif _visible_preamble(prefix, reference_env, source_name=source_name, base_line=preamble_line):
                 first = next(i for i, part in enumerate(prefix) if part.strip())
                 raise ParseError(
                     "content_before_first_slide",
                     "Content is not allowed before the first H1 slide.",
-                    line=first + 1,
+                    line=preamble_line + first,
                     input_path=source_name,
                 )
             current_title = title
@@ -462,20 +623,27 @@ def _split_source(lines: list[str], *, source_name: str) -> tuple[dict[str, obje
             )
         )
         MD.parse("\n".join(current_body), reference_env)
-    elif _visible_preamble(current_body, reference_env):
+    elif _visible_preamble(current_body, reference_env, source_name=source_name, base_line=preamble_line):
         first = next(i for i, part in enumerate(current_body) if part.strip())
         raise ParseError(
             "content_before_first_slide",
             "Content is not allowed before the first H1 slide.",
-            line=first + 1,
+            line=preamble_line + first,
             input_path=source_name,
         )
     return document_config, slides, reference_env.get("references", {})
 
 
-def _visible_preamble(lines: list[str], env: dict) -> bool:
+def _visible_preamble(lines: list[str], env: dict, *, source_name: str, base_line: int) -> bool:
     """Reference definitions and ignored HTML may precede the first slide."""
     tokens = MD.parse("\n".join(lines), env)
+    _validate_metadata_comments(
+        tokens,
+        source_name=source_name,
+        slide_index=None,
+        base_line=base_line,
+        allow_element_comments=False,
+    )
     for token in tokens:
         if token.type in {"paragraph_open", "paragraph_close"}:
             continue
@@ -562,7 +730,7 @@ def _parse_metadata_comment(
         )
     raw = "\n".join(lines[start_index + 1 : end_index])
     try:
-        loaded = yaml.safe_load(raw) if raw.strip() else {}
+        loaded = load_settings_yaml(raw)
     except yaml.YAMLError as exc:
         raise ParseError(
             "invalid_yaml", f"Invalid YAML metadata: {exc}", line=start_index + 1, input_path=source_name

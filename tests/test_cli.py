@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import shutil
 import xml.etree.ElementTree as ET
 import zipfile
@@ -14,6 +15,7 @@ from markdown_slides.assets import default_template_path
 from markdown_slides.cli import _apply_color_ignore_flags, build_parser, build_root_help, main
 from markdown_slides.errors import RenderError
 from markdown_slides.parser import parse_deck
+from markdown_slides.renderer import render_pptx
 
 
 def test_no_args_prints_help() -> None:
@@ -25,6 +27,42 @@ def test_no_args_prints_help() -> None:
     assert exit_code == 0
     assert "markdown-pptx deck.md" in stdout.getvalue()
     assert stderr.getvalue() == ""
+
+
+@pytest.mark.parametrize("ignore_document,ignore_slide", [(False, False), (True, False), (False, True), (True, True)])
+def test_color_ignore_flags_respect_table_fill_scopes_and_keep_effects(tmp_path, ignore_document, ignore_slide) -> None:
+    deck = parse_deck(
+        '<!-- markdown-pptx:deck\ntable:\n  header_fill: "#112233"\n  row_fill: "#223344"\n'
+        'media_effects:\n  border_radius: 8pt\ntable_effects:\n  shadow: "2pt 2pt 6pt"\n-->\n'
+        '# Table\n<!-- markdown-pptx:slide\ntable:\n  header_fill: "#334455"\n'
+        "  total_row: true\n-->\n\n| A |\n| --- |\n| Body |\n| Total |\n",
+        input_path=None,
+        source_name="table.md",
+    )
+    filtered = _apply_color_ignore_flags(
+        deck,
+        ignore_document_colors=ignore_document,
+        ignore_slide_colors=ignore_slide,
+    )
+    assert filtered.table_options.header_fill == (None if ignore_document else "#112233")
+    assert filtered.table_options.row_fill == (None if ignore_document else "#223344")
+    assert filtered.slides[0].table_options.header_fill == (None if ignore_slide else "#334455")
+    assert filtered.slides[0].table_options.total_row
+    assert filtered.media_effects == deck.media_effects
+    assert filtered.slides[0].body.tables[0].effects == deck.slides[0].body.tables[0].effects
+    output = tmp_path / "table.pptx"
+    render_pptx(filtered, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+    ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+    rows = xml.findall(".//a:tbl/a:tr", ns)
+    expected = [None if ignore_document else "112233", None if ignore_document else "223344"]
+    if not ignore_slide:
+        expected[0] = "334455"
+    for row, color in zip(rows[:2], expected, strict=True):
+        node = row.find("a:tc/a:tcPr/a:solidFill/a:srgbClr", ns)
+        assert (None if node is None else node.attrib["val"]) == color
+    assert rows[-1].find("a:tc/a:tcPr/a:solidFill", ns) is None
 
 
 def test_version_flag_prints_version() -> None:
@@ -124,20 +162,34 @@ def test_syntax_json_output() -> None:
     assert "slide_metadata_keys" in payload
     assert "master" in payload["slide_metadata_keys"]
     assert "table" in payload["slide_metadata_keys"]
+    assert "layout" in payload["deck_metadata_keys"]
+    assert "hidden" in payload["slide_metadata_keys"]
+    assert "Default Title and Content" in payload["layout_default_syntax"]
+    assert "Heading inference overrides the deck default" in payload["heading_layout_syntax"]["precedence"]
+    assert "native subtitle" in payload["heading_layout_syntax"]["subtitle"]
+    assert "Zero-height rows" in payload["table_content_syntax"]
+    assert payload["media_effects_syntax"]["keys"] == ["border", "border_radius", "shadow", "reflection"]
+    assert payload["table_effects_syntax"]["keys"] == ["border", "shadow", "reflection"]
+    assert "always below" in payload["media_effects_syntax"]["reflection"].lower()
+    assert {"media_layout", "table_layout"} <= set(payload["deck_metadata_keys"])
+    assert {"media_layout", "table_layout"} <= set(payload["slide_metadata_keys"])
+    assert payload["media_layout_syntax"]["defaults"] == {"width": "auto", "align": "center", "valign": "top"}
+    assert payload["table_layout_syntax"]["keys"] == ["width", "align"]
+    assert "half of one box" in payload["table_layout_syntax"]["width"]
+    assert {"media_effects", "table_effects", "table"} <= set(payload["deck_metadata_keys"])
+    assert {"media_effects", "table_effects"} <= set(payload["slide_metadata_keys"])
     assert "<!-- markdown-pptx:deck" in payload["metadata_comment_syntax"]["deck"]
     assert "<!-- markdown-pptx:slide" in payload["metadata_comment_syntax"]["slide"]
     assert "1-based" in payload["master_selector_syntax"]
-    assert payload["table_options"] == {
-        "scope": "Slide-level options applied to every table on the slide. Require at least one pipe table.",
-        "defaults": {
-            "header_row": True,
-            "total_row": False,
-            "first_column": False,
-            "last_column": False,
-            "banded_rows": True,
-            "banded_columns": False,
-        },
+    assert payload["table_options"]["defaults"] == {
+        "header_row": True,
+        "total_row": False,
+        "first_column": False,
+        "last_column": False,
+        "banded_rows": True,
+        "banded_columns": False,
     }
+    assert set(payload["table_options"]["colors"]) == {"header_fill", "row_fill", "banded_row_fill"}
     assert payload["aspect_ratio_values"] == ["16:9", "4:3"]
     assert payload["layout_values"] == [
         "Title Slide",
@@ -192,17 +244,42 @@ def test_syntax_json_output() -> None:
 
 def test_examples_use_metadata_comments() -> None:
     from markdown_slides.assets import load_examples
-    from markdown_slides.parser import parse_deck
+    from markdown_slides.parser import _split_source, parse_deck
 
     examples = load_examples()
     for example in examples:
         source = example["markdown"]
         assert not source.startswith("---\n")
-        parse_deck(source, input_path=None, source_name=example["id"])
+        deck = parse_deck(source, input_path=None, source_name=example["id"])
+        document, slides, _ = _split_source(source.splitlines(), source_name=example["id"])
+        default_layout = document.get("layout", "Title and Content")
+        overrides = [index for index, slide in enumerate(slides) if slide.config.get("layout") == default_layout]
+        if overrides:
+            without_override = re.sub(
+                r"<!-- markdown-pptx:slide\n.*?\n-->",
+                lambda match, layout=default_layout: match.group().replace(f"\nlayout: {layout}\n", "\n"),
+                source,
+                flags=re.DOTALL,
+            )
+            inferred = parse_deck(without_override, input_path=None, source_name=example["id"])
+            assert all(deck.slides[index].layout != inferred.slides[index].layout for index in overrides)
+
+    decks = [parse_deck(item["markdown"], input_path=None, source_name=item["id"]) for item in examples]
+    assert any(slide.hidden for deck in decks for slide in deck.slides)
+    assert any(image.effects is not None for deck in decks for slide in deck.slides for image in slide.body.images)
 
     stdout = io.StringIO()
     assert main(["--examples", "metadata"], stdout=stdout, stderr=io.StringIO()) == 0
     assert stdout.getvalue().startswith("<!-- markdown-pptx:deck\n")
+
+
+def test_syntax_example_is_valid_current_markdown() -> None:
+    from markdown_slides.assets import load_syntax_payload
+    from markdown_slides.parser import parse_deck
+
+    deck = parse_deck(load_syntax_payload()["example"], input_path=None, source_name="syntax-example")
+    assert deck.slides[1].layout == "Title and Content"
+    assert deck.slides[-1].hidden
 
 
 def test_syntax_plain_output_lists_all_theme_color_variables() -> None:
@@ -216,6 +293,14 @@ def test_syntax_plain_output_lists_all_theme_color_variables() -> None:
     assert "aspect_ratio values: 16:9, 4:3" in output
     assert "layout values: Title Slide, Title and Content, Two Content, Section Header, Title Only, Blank" in output
     assert "table options: header_row, total_row, first_column, last_column, banded_rows, banded_columns" in output
+    assert "Default layout:" in output
+    assert "Heading layouts:" in output
+    assert "Media effects:" in output
+    assert "Table effects:" in output
+    assert "Table sizing and alignment:" in output
+    assert "Media placement:" in output
+    assert "Table placement:" in output
+    assert "Slide visibility:" in output
     assert 'table option defaults: {"header_row": true' in output
     assert "Theme color syntax:" in output
     assert "Theme color variables:" in output
@@ -345,7 +430,7 @@ def test_skill_install_and_remove(tmp_path: Path) -> None:
     assert "Always invoke the tool as `uvx markdown-pptx ...`" in skill_content
     assert "## Set A Deck-Wide Theme Palette" in skill_content
     assert "preset: null" in skill_content
-    assert "## Style Tables With Slide Metadata" in skill_content
+    assert "## Style Tables With Deck And Slide Metadata" in skill_content
     assert "banded_columns: false" in skill_content
     assert "## Export Slide Images On Windows" in skill_content
     assert "uvx markdown-pptx deck.md deck.pptx --export-images png --json" in skill_content
@@ -380,7 +465,7 @@ def test_skill_install_and_remove(tmp_path: Path) -> None:
     assert payload["created"] is False
     assert payload["updated"] is True
     updated_content = skill_file.read_text(encoding="utf-8")
-    assert "## Style Tables With Slide Metadata" in updated_content
+    assert "## Style Tables With Deck And Slide Metadata" in updated_content
     assert "## Export Slide Images On Windows" in updated_content
 
     stdout = io.StringIO()

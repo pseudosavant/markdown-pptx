@@ -11,10 +11,11 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.oxml.ns import qn
 from pptx.oxml.xmlchemy import OxmlElement
-from pptx.util import Inches
 
 from markdown_slides.errors import AssetError
-from markdown_slides.models import VideoBlock
+from markdown_slides.layout_settings import fit_media
+from markdown_slides.models import ObjectLayout, VideoBlock
+from markdown_slides.native_pptx import apply_media_effects, replace_content_placeholder
 
 DEFAULT_MAX_REMOTE_VIDEO_MB = 100
 
@@ -87,7 +88,9 @@ class VideoDownloader:
         self._cache.clear()
 
 
-def render_video(slide, placeholder, video: VideoBlock, *, base_dir: Path, downloader: VideoDownloader) -> None:
+def render_video(
+    slide, placeholder, video: VideoBlock, *, base_dir: Path, downloader: VideoDownloader, set_color
+) -> None:
     if video.kind == "youtube":
         aspect = video.aspect_ratio or 16 / 9
         left, top, width, height = _placement(placeholder, video, aspect)
@@ -96,6 +99,9 @@ def render_video(slide, placeholder, video: VideoBlock, *, base_dir: Path, downl
         relationship = slide.part.relate_to(video.source, RT.VIDEO, is_external=True)
         _attach_video_link(picture, relationship)
         _add_media_timing(slide, picture.shape_id)
+        if video.effects is not None:
+            apply_media_effects(picture, video.effects, set_color=set_color)
+        replace_content_placeholder(placeholder, picture)
         return
 
     path = downloader.fetch(video.source) if video.kind == "remote_mp4" else (base_dir / video.source).resolve()
@@ -110,6 +116,9 @@ def render_video(slide, placeholder, video: VideoBlock, *, base_dir: Path, downl
     )
     shape.name = "MarkdownSlidesVideo"
     _configure_local_video(slide, shape, video)
+    if video.effects is not None:
+        apply_media_effects(shape, video.effects, set_color=set_color)
+    replace_content_placeholder(placeholder, shape)
 
 
 def _inspect_video(path: Path) -> tuple[float, Image.Image]:
@@ -160,21 +169,8 @@ def _poster(poster_path: str | None, first_frame: Image.Image, aspect: float, ba
 
 
 def _placement(placeholder, video: VideoBlock, aspect: float) -> tuple[int, int, int, int]:
-    max_width = int(placeholder.width)
-    max_height = int(placeholder.height)
-    if video.width.endswith("%"):
-        desired = round(max_width * float(video.width[:-1]) / 100)
-    elif video.width.endswith("in"):
-        desired = int(Inches(float(video.width[:-2])))
-    else:
-        desired = max_width
-    width = min(max_width, desired, round(max_height * aspect))
-    height = round(width / aspect)
-    horizontal = {"left": 0, "center": 0.5, "right": 1}[video.align]
-    vertical = {"top": 0, "middle": 0.5, "bottom": 1}[video.valign]
-    left = int(placeholder.left + (max_width - width) * horizontal)
-    top = int(placeholder.top + (max_height - height) * vertical)
-    return left, top, width, height
+    layout = ObjectLayout(width=video.width, align=video.align, valign=video.valign)
+    return fit_media(placeholder.left, placeholder.top, placeholder.width, placeholder.height, aspect, layout)
 
 
 def _element(tag: str, **attributes):

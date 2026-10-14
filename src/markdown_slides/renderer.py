@@ -16,7 +16,7 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.dml import MSO_THEME_COLOR
 from pptx.enum.shapes import PP_PLACEHOLDER
-from pptx.enum.text import MSO_AUTO_SIZE, MSO_NUMBERED_BULLET_STYLE, MSO_TEXT_STRIKE_TYPE
+from pptx.enum.text import MSO_AUTO_SIZE, MSO_NUMBERED_BULLET_STYLE, MSO_TEXT_STRIKE_TYPE, MSO_VERTICAL_ANCHOR, PP_ALIGN
 from pptx.util import BulletStyle, Emu, Inches, Pt
 from pygments import lex
 from pygments.lexers import get_lexer_by_name
@@ -27,17 +27,25 @@ from markdown_slides.assets import default_template_path
 from markdown_slides.code_background import CodeBackgroundAnalyzer
 from markdown_slides.code_colors import token_role
 from markdown_slides.errors import AssetError, MarkdownSlidesError, RenderError, TemplateError
+from markdown_slides.layout_settings import fit_media, object_position, requested_width
 from markdown_slides.models import (
     Background,
     BodyContent,
     Deck,
     ImageBlock,
     InlineText,
+    ObjectLayout,
     Paragraph,
     Slide,
     TableBlock,
     TableOptions,
     normalize_layout_name,
+)
+from markdown_slides.native_pptx import (
+    apply_media_effects,
+    apply_table_effects,
+    replace_content_placeholder,
+    set_slide_hidden,
 )
 from markdown_slides.video import DEFAULT_MAX_REMOTE_VIDEO_MB, VideoDownloader, render_video
 
@@ -148,6 +156,7 @@ def render_pptx(
                     f"{_master_label(selected_master)} contains more than one layout named '{slide_spec.layout}'.",
                 )
             slide = presentation.slides.add_slide(matches[0])
+            set_slide_hidden(slide, slide_spec.hidden)
             _apply_hide_background_graphics(slide, slide_spec)
             if slide_spec.background is not None:
                 _apply_background(
@@ -649,7 +658,9 @@ def _render_content_area(
         )
         return
     if body.videos:
-        render_video(slide, placeholder, body.videos[0], base_dir=base_dir, downloader=video_downloader)
+        render_video(
+            slide, placeholder, body.videos[0], base_dir=base_dir, downloader=video_downloader, set_color=_set_color
+        )
         return
     if body.tables:
         _render_table(slide, placeholder, body.tables[0], slide_spec.table_options, deck)
@@ -794,6 +805,7 @@ def _apply_run_font(
     template_defaults: dict[str, float],
     text_color: str | None,
 ) -> None:
+    preserve_inherited = paragraph_model.kind in {"title", "subtitle", "table_cell"}
     if paragraph_model.kind == "heading":
         _set_theme_font(run, major=True)
         base_size = template_defaults["body_font_pt"]
@@ -801,15 +813,15 @@ def _apply_run_font(
         run.font.size = Pt(round(base_size * scale))
     elif paragraph_model.kind == "code" or "code" in styles:
         run.font.name = "Consolas"
-    elif paragraph_model.kind != "title":
+    elif not preserve_inherited:
         _set_theme_font(run, major=False)
     if paragraph_model.kind == "heading" or "strong" in styles:
         run.font.bold = True
-    elif paragraph_model.kind != "title":
+    elif not preserve_inherited:
         run.font.bold = False
     if paragraph_model.quote_depth or "emphasis" in styles:
         run.font.italic = True
-    elif paragraph_model.kind != "title":
+    elif not preserve_inherited:
         run.font.italic = False
     if paragraph_model.quote_depth:
         _set_run_color(run, "var(--accent-1)")
@@ -817,13 +829,16 @@ def _apply_run_font(
         run.font.strike = MSO_TEXT_STRIKE_TYPE.SINGLE
     if "superscript" in styles or "subscript" in styles:
         run.font.baseline = 0.3 if "superscript" in styles else -0.25
-        if paragraph_model.kind == "title":
+        if paragraph_model.kind in {"table_cell", "subtitle"}:
+            base_size = None
+        elif paragraph_model.kind == "title":
             base_size = template_defaults["title_font_pt"]
         elif paragraph_model.kind == "heading":
             base_size = template_defaults["body_font_pt"] * HEADING_SCALE.get(paragraph_model.heading_level or 6, 1.0)
         else:
             base_size = template_defaults["body_font_pt"]
-        run.font.size = Pt(round(base_size * 0.7))
+        if base_size is not None:
+            run.font.size = Pt(round(base_size * 0.7))
     if text_color is not None and not paragraph_model.quote_depth:
         _set_run_color(run, text_color)
 
@@ -859,7 +874,10 @@ def _render_code(
     for kind, value in tokens:
         if not value:
             continue
-        style = CODE_STYLE.style_for_token(kind) if not value.isspace() else None
+        style_kind = kind
+        while style_kind not in CODE_STYLE.styles and style_kind.parent is not None:
+            style_kind = style_kind.parent
+        style = CODE_STYLE.style_for_token(style_kind) if not value.isspace() else None
         role = token_role(kind)
         if code_palette:
             style = {"color": None, "bold": role == "keyword", "italic": role == "comment", "underline": False}
@@ -965,7 +983,10 @@ def _render_table(slide, placeholder, table: TableBlock, options: TableOptions, 
     cols = len(table.headers)
     if cols == 0:
         raise RenderError("invalid_table", "Tables must contain at least one header cell.")
-    shape = slide.shapes.add_table(rows, cols, placeholder.left, placeholder.top, placeholder.width, placeholder.height)
+    layout = table.layout or ObjectLayout()
+    width = requested_width(placeholder.width, layout.width)
+    left, top = object_position(placeholder.left, placeholder.top, placeholder.width, 0, width, 0, layout)
+    shape = slide.shapes.add_table(rows, cols, left, top, width, Pt(0))
     shape.name = "MarkdownSlidesTable"
     table_shape = shape.table
     table_shape.style_id = TABLE_STYLE_MEDIUM_1_ACCENT_1
@@ -976,25 +997,71 @@ def _render_table(slide, placeholder, table: TableBlock, options: TableOptions, 
     table_shape.horz_banding = options.banded_rows
     table_shape.vert_banding = options.banded_columns
     for column_index, cell in enumerate(table.headers):
-        table_shape.cell(0, column_index).text = _flatten_inline(cell)
+        _render_table_cell(table_shape.cell(0, column_index), cell, deck)
     for row_index, row in enumerate(table.rows, start=1):
         for column_index, cell in enumerate(row):
-            table_shape.cell(row_index, column_index).text = _flatten_inline(cell)
-    for row in table_shape.rows:
-        for cell in row.cells:
+            _render_table_cell(table_shape.cell(row_index, column_index), cell, deck)
+    fills = {
+        name: getattr(options, name) or getattr(deck.table_options, name)
+        for name in ("header_fill", "row_fill", "banded_row_fill")
+    }
+    for row_index, row in enumerate(table_shape.rows):
+        row.height = Pt(0)
+        if row_index == 0 and options.header_row:
+            fill = fills["header_fill"]
+        elif row_index == rows - 1 and options.total_row:
+            fill = None
+        else:
+            data_index = row_index - int(options.header_row)
+            fill = fills["row_fill"]
+            if options.banded_rows and data_index % 2 == 0:
+                fill = fills["banded_row_fill"] or fill
+        for column_index, cell in enumerate(row.cells):
+            if fill is not None:
+                cell.fill.solid()
+                _set_color(cell.fill.fore_color, fill)
+            cell.vertical_anchor = MSO_VERTICAL_ANCHOR.MIDDLE
+            cell.text_frame.word_wrap = True
+            alignment = table.alignments[column_index] if column_index < len(table.alignments) else "left"
             for paragraph in cell.text_frame.paragraphs:
-                for run in paragraph.runs:
-                    _set_theme_font(run, major=False)
+                paragraph.alignment = {"left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}[
+                    alignment
+                ]
+    if table.effects is not None:
+        apply_table_effects(shape, table.effects)
+    replace_content_placeholder(placeholder, shape)
+
+
+def _render_table_cell(cell, fragments: list[InlineText], deck: Deck) -> None:
+    cell.text_frame.clear()
+    paragraph = cell.text_frame.paragraphs[0]
+    model = Paragraph(kind="table_cell", fragments=fragments)
+    for fragment in fragments:
+        _add_fragment_runs(paragraph, fragment, deck, model, template_defaults={}, text_color=None)
 
 
 def _render_image(
     slide, placeholder, image: ImageBlock, *, base_dir: Path, downloader: Downloader, contain: bool, name: str
 ) -> None:
     image_source = _resolve_image_source(image.src, base_dir=base_dir, downloader=downloader)
+    area_left, area_top, area_width, area_height = (
+        placeholder.left,
+        placeholder.top,
+        placeholder.width,
+        placeholder.height,
+    )
     left, top, width, height = _fit_image(
-        image_source, placeholder.left, placeholder.top, placeholder.width, placeholder.height, contain=contain
+        image_source,
+        area_left,
+        area_top,
+        area_width,
+        area_height,
+        contain=contain,
+        layout=image.layout or ObjectLayout(),
     )
     picture = slide.shapes.add_picture(image_source, left, top, width, height)
+    if image.effects is not None:
+        apply_media_effects(picture, image.effects, set_color=_set_color)
     picture.name = name
     picture.alt_text = image.alt
     picture.alt_text_title = image.title
@@ -1002,6 +1069,7 @@ def _render_image(
         picture.click_action.hyperlink.address = image.href
         if image.link_title:
             picture.click_action.hyperlink.screen_tip = image.link_title
+    replace_content_placeholder(placeholder, picture)
 
 
 def _resolve_image_source(src: str, *, base_dir: Path, downloader: Downloader):
@@ -1025,7 +1093,7 @@ def _resolve_image_source(src: str, *, base_dir: Path, downloader: Downloader):
 
 
 def _fit_image(
-    image_source, left: int, top: int, width: int, height: int, *, contain: bool
+    image_source, left: int, top: int, width: int, height: int, *, contain: bool, layout: ObjectLayout | None = None
 ) -> tuple[int, int, int, int]:
     try:
         if isinstance(image_source, io.BytesIO):
@@ -1046,13 +1114,15 @@ def _fit_image(
         raise
     except (OSError, UnidentifiedImageError, PILImage.DecompressionBombError, PILImage.DecompressionBombWarning) as exc:
         raise AssetError("invalid_image", f"Image could not be decoded ({type(exc).__name__}).") from exc
-    return _fit_image_dimensions((image_width, image_height), left, top, width, height, contain=contain)
+    return _fit_image_dimensions((image_width, image_height), left, top, width, height, contain=contain, layout=layout)
 
 
-def _fit_image_dimensions(image_size, left, top, width, height, *, contain):
+def _fit_image_dimensions(image_size, left, top, width, height, *, contain, layout=None):
     image_width, image_height = image_size
     if image_width <= 0 or image_height <= 0:
         raise AssetError("invalid_image", "Image dimensions must be greater than zero.")
+    if contain and layout is not None:
+        return fit_media(left, top, width, height, image_width / image_height, layout)
     scale = (
         min(width / image_width, height / image_height) if contain else max(width / image_width, height / image_height)
     )
@@ -1156,16 +1226,6 @@ def _two_content_placeholders(slide):
             "invalid_content_placeholders", "Two Content placeholders must be side by side without horizontal overlap."
         )
     return matches
-
-
-def _flatten_inline(fragments: list[InlineText]) -> str:
-    parts: list[str] = []
-    for fragment in fragments:
-        if fragment.children:
-            parts.append(_flatten_inline(fragment.children))
-        else:
-            parts.append(fragment.text or "")
-    return "".join(parts)
 
 
 def _configure_paragraph_bullets(paragraph, paragraph_model) -> None:

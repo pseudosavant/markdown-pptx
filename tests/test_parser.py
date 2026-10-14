@@ -8,6 +8,70 @@ from markdown_slides.errors import ParseError, UnsupportedContentError
 from markdown_slides.parser import parse_deck
 
 
+def test_deck_layout_is_inherited_before_two_content_parsing() -> None:
+    deck = parse_deck(
+        "<!-- markdown-pptx:deck\nlayout: Two Content\n-->\n\n"
+        "# Split\n\nLeft\n\n***\n\nRight\n\n"
+        "# Single\n<!-- markdown-pptx:slide\nlayout: Title and Content\n-->\n\nBody\n",
+        input_path=None,
+        source_name="deck.md",
+    )
+    assert deck.layout == "Two Content"
+    assert [slide.layout for slide in deck.slides] == ["Two Content", "Title and Content"]
+    assert deck.slides[0].secondary_body.paragraphs[0].fragments[0].text == "Right"
+    assert deck.slides[1].secondary_body is None
+
+
+def test_deck_layout_default_and_explicit_blank_override() -> None:
+    deck = parse_deck(
+        "# Basic\n\nBody\n\n#\n<!-- markdown-pptx:slide\nlayout: Blank\n-->\n",
+        input_path=None,
+        source_name="deck.md",
+    )
+    assert deck.layout == "Title and Content"
+    assert [slide.layout for slide in deck.slides] == ["Title and Content", "Blank"]
+
+
+@pytest.mark.parametrize("layout", ["true", "23", "[]", "Unknown", "''"])
+def test_invalid_deck_layout_is_rejected(layout: str) -> None:
+    with pytest.raises(ParseError):
+        parse_deck(
+            f"<!-- markdown-pptx:deck\nlayout: {layout}\n-->\n\n# Slide\n",
+            input_path=None,
+            source_name="deck.md",
+        )
+
+
+def test_hidden_slide_defaults_and_metadata() -> None:
+    deck = parse_deck(
+        "# Visible\n\nBody\n\n# Backup\n<!-- markdown-pptx:slide\nhidden: true\n-->\n\nExtra\n"
+        "# Explicit\n<!-- markdown-pptx:slide\nhidden: false\n-->\n",
+        input_path=None,
+        source_name="deck.md",
+    )
+    assert [slide.hidden for slide in deck.slides] == [False, True, False]
+
+
+@pytest.mark.parametrize("value", ["1", "'true'", "null", "[]"])
+def test_hidden_requires_a_boolean(value: str) -> None:
+    with pytest.raises(ParseError) as excinfo:
+        parse_deck(
+            f"# Backup\n<!-- markdown-pptx:slide\nhidden: {value}\n-->\n",
+            input_path=None,
+            source_name="deck.md",
+        )
+    assert excinfo.value.context.code == "invalid_hidden"
+
+
+def test_table_preserves_markdown_column_alignment_and_defaults() -> None:
+    deck = parse_deck(
+        "# Table\n\n| Default | Left | Center | Right |\n| --- | :--- | :---: | ---: |\n| A | B | C | D |\n",
+        input_path=None,
+        source_name="deck.md",
+    )
+    assert deck.slides[0].body.tables[0].alignments == ["left", "left", "center", "right"]
+
+
 def test_video_links_parse_local_and_youtube_settings() -> None:
     deck = parse_deck(
         "# Local\n\n[![Play demo](media/poster.png)](media/demo.mp4)\n\n"
@@ -38,6 +102,7 @@ def test_video_links_parse_local_and_youtube_settings() -> None:
     assert online.source == "https://www.youtube.com/embed/aqz-KE-bpKQ"
     assert online.width == "80%"
     assert online.aspect_ratio is None
+    assert online.valign == "top"
 
 
 @pytest.mark.parametrize(
@@ -299,7 +364,7 @@ def test_setext_h1_starts_slides_and_setext_h2_stays_in_body() -> None:
         source_name="deck.md",
     )
     assert [slide.title for slide in deck.slides] == ["First title", "Second title"]
-    assert deck.slides[0].body.paragraphs[0].heading_level == 2
+    assert deck.slides[0].body.paragraphs[0].kind == "subtitle"
     assert deck.slides[0].title_fragments[1].kind == "strong"
 
 

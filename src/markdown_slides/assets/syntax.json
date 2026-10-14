@@ -1,32 +1,44 @@
 {
   "deck_metadata_keys": [
+    "layout",
     "aspect_ratio",
     "fonts",
     "color_scheme",
     "background",
     "title_color",
     "body_color",
-    "code_highlighting"
+    "code_highlighting",
+    "media_effects",
+    "table_effects",
+    "table",
+    "media_layout",
+    "table_layout"
   ],
   "slide_metadata_keys": [
     "master",
     "layout",
+    "hidden",
     "background",
     "title_color",
     "body_color",
     "hide_background_graphics",
     "notes",
     "table",
-    "code_highlighting"
+    "code_highlighting",
+    "media_effects",
+    "table_effects",
+    "media_layout",
+    "table_layout"
   ],
   "metadata_comment_syntax": {
     "deck": "At the start of the file: <!-- markdown-pptx:deck on its own line, YAML settings, then --> on its own line.",
     "slide": "Immediately after an H1 heading: <!-- markdown-pptx:slide on its own line, YAML settings, then --> on its own line.",
-    "legacy_yaml_front_matter": "Unsupported. Metadata must use named HTML comments."
+    "legacy_yaml_front_matter": "Unsupported. Metadata must use named HTML comments.",
+    "validation": "The markdown-pptx: namespace is reserved. Unknown, nested, inline, and misplaced directives are errors with source context. After optional deck metadata, only ordinary comments, blank lines, and reference definitions may precede the first H1. Element metadata requires a target inside a slide. Ordinary authoring comments remain ignored. Fenced, indented, and inline code examples stay literal."
   },
   "master_selector_syntax": "Use a positive 1-based master index, or an exact unique slide-master/theme name reported by --list-masters.",
   "table_options": {
-    "scope": "Slide-level options applied to every table on the slide. Require at least one pipe table.",
+    "scope": "Deck defaults and slide overrides, merged per property. Slide table settings require at least one pipe table and apply to every table on that slide.",
     "defaults": {
       "header_row": true,
       "total_row": false,
@@ -34,7 +46,14 @@
       "last_column": false,
       "banded_rows": true,
       "banded_columns": false
-    }
+    },
+    "colors": {
+      "header_fill": "Optional header background when header_row is true.",
+      "row_fill": "Optional body-row background.",
+      "banded_row_fill": "Optional alternating background when banded_rows is true. Matches native banding, beginning with the first body row."
+    },
+    "color_behavior": "Omitted fills preserve native styling. Slide fills override deck fills per property. Total rows retain their native style. Color-ignore flags strip fills at their respective scope.",
+    "total_row": "Default false. When true, style the final data row. Does not calculate totals or infer them from cell labels. GFM has no total-row syntax."
   },
   "aspect_ratio_values": [
     "16:9",
@@ -48,15 +67,15 @@
     "Title Only",
     "Blank"
   ],
-  "two_content_syntax": "Explicit layout: Two Content requires exactly one top-level thematic break. Content before it goes left and content after it goes right. Prefer *** surrounded by blank lines. --- and ___ also work when parsed as thematic breaks. Either area can be empty, text flow, one image, one table, or one video. Require exactly two non-overlapping body/content placeholders arranged left to right. Nested breaks and additional breaks are rejected.",
+  "two_content_syntax": "Exactly one top-level thematic break automatically selects Two Content unless a slide layout is explicitly configured. Content before it goes left and content after it goes right. Prefer *** surrounded by blank lines. --- and ___ also work when parsed as thematic breaks. Either area can be empty, text flow, one image, one table, or one video. Explicit Two Content at deck or slide level still requires the separator. Require exactly two non-overlapping body/content placeholders arranged left to right. Nested breaks, additional breaks, and breaks with an incompatible explicit slide layout are rejected.",
   "video_syntax": {
     "form": "A standalone Markdown link to an MP4 or YouTube URL becomes a video. A linked image to an MP4 uses the image as its poster. An optional adjacent markdown-pptx:video HTML comment holds non-default YAML settings. One video occupies a Title and Content area or one side of Two Content.",
     "example": "[![Play demo](media/poster.png)](media/demo.mp4)\n\n<!-- markdown-pptx:video\nwidth: 75%\nstart: automatic\nloop: true\nmute: true\nfullscreen: true\n-->",
     "source": "The standalone link destination is a local MP4 path, HTTPS MP4 URL, or YouTube watch, share, Shorts, or embed URL. Relative paths resolve from the Markdown directory. Absolute paths use the current operating system. Inline links remain hyperlinks.",
-    "width": "auto, a percentage such as 75%, or inches such as 6in. Always fitted within the content area.",
+    "width": "auto, a percentage such as 75%, or inches such as 6in. Always fitted within the content area. Inherits media_layout defaults unless explicitly overridden.",
     "aspect_ratio": "Optional width:height ratio. Defaults to the MP4 display aspect ratio or 16:9 for YouTube.",
-    "align": "left, center, or right. Default center.",
-    "valign": "top, middle, or bottom. Default middle.",
+    "align": "left, center, or right. Default center. Inherits media_layout defaults unless explicitly overridden.",
+    "valign": "top, middle, or bottom. Default top. Inherits media_layout defaults unless explicitly overridden.",
     "mp4_only": {
       "linked_poster": "Use a local linked image as the link label for a custom MP4 poster. Default first decoded frame. No poster setting is supported.",
       "start": "click or automatic. Default click. Playback does not advance the slide when it ends.",
@@ -121,7 +140,14 @@
     "document_wide_link_and_image_references",
     "hyperlink_titles_as_screentips",
     "list_block_indentation",
-    "ordered_list_zero_and_large_starts"
+    "ordered_list_zero_and_large_starts",
+    "pipe_table_column_alignment",
+    "native_image_effects",
+    "hidden_slides",
+    "native_table_effects",
+    "native_video_effects",
+    "heading_based_layout_inference",
+    "rich_table_cells"
   ],
   "unsupported_markdown": [
     "horizontal_rules_outside_two_content_separator",
@@ -146,7 +172,7 @@
     "var(--hyperlink)",
     "var(--followed-hyperlink)"
   ],
-  "example": "---\naspect_ratio: \"16:9\"\nfonts:\n  body: Aptos\n  headings: Aptos Display\ncolor_scheme:\n  preset: Office\ntitle_color: \"var(--dark-1)\"\nbody_color: \"var(--dark-1)\"\nbackground: \"linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)\"\n---\n\n# Title slide\n---\nmaster: 1\nlayout: Title Slide\nnotes: |\n  Introduce the deck.\n---\n\nA concise subtitle line.\n\n# Overview\n---\nlayout: Title and Content\ntitle_color: \"var(--light-1)\"\nbody_color: \"var(--light-1)\"\nbackground: \"linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 100%)\"\n---\n\n## Goals\n- Keep the markdown readable\n- Use real PowerPoint placeholders\n- Fail on ambiguous mappings\n",
+  "example": "<!-- markdown-pptx:deck\naspect_ratio: \"16:9\"\nfonts:\n  body: Aptos\n  headings: Aptos Display\ncolor_scheme:\n  preset: Office\ntitle_color: \"var(--dark-1)\"\nbody_color: \"var(--dark-1)\"\n-->\n\n# Title slide\n<!-- markdown-pptx:slide\nlayout: Title Slide\nnotes: Introduce the deck.\n-->\n\nA concise subtitle line.\n\n# Overview\n\n## Goals\n\n- Keep the Markdown readable\n- Use real PowerPoint placeholders\n- Omit redundant layout settings\n\n# Backup details\n<!-- markdown-pptx:slide\nhidden: true\n-->\n\nAdditional context for questions.\n",
   "code_highlighting": {
     "values": [
       "default",
@@ -169,5 +195,94 @@
     "report": "JSON code_highlighting entries include minimum_contrast, target_met, and warnings. target_met is null for an assumed background. Plain CLI warnings go to stderr."
   },
   "reference_syntax": "Definitions apply across the deck, including slide titles. Full, collapsed, and shortcut references work. Definitions may appear before the first slide after the deck metadata comment. The first normalized label wins. Definitions inside code or HTML comments are not collected. Unresolved references remain literal. Optional text and picture link titles become ScreenTips. Picture titles remain separate metadata.",
-  "list_content_syntax": "Continuation paragraphs, code, and headings retain their containing list indentation. Nested lists inside quotes count toward the three-level limit. HTML comments are ignored. Images inside lists are rejected. Ordered values outside 1..32767 use editable text prefixes without automatic PowerPoint renumbering. Template paragraph spacing is preserved."
+  "list_content_syntax": "Continuation paragraphs, code, and headings retain their containing list indentation. Nested lists inside quotes count toward the three-level limit. Ordinary authoring comments are ignored. Reserved markdown-pptx directives inside lists are errors. Images inside lists are rejected. Ordered values outside 1..32767 use editable text prefixes without automatic PowerPoint renumbering. Template paragraph spacing is preserved.",
+  "layout_default_syntax": "Explicit slide layout, inferred Two Content from a top-level divider, inferred Title Slide or Section Header from heading-only content, deck layout, then Default Title and Content for ordinary content. An empty H1 with no body defaults to Blank when no layout is configured.",
+  "hidden_slide_syntax": "Slide hidden is a boolean, default false. True keeps the editable slide and notes but skips it during ordinary slide-show navigation.",
+  "table_content_syntax": "Full content-area width by default, always anchored at the top. table_layout can narrow the table and set horizontal object alignment. Zero-height rows use native PowerPoint content sizing. Oversized tables are not automatically shrunk. Markdown :---, :---:, and ---: set horizontal column alignment. Default left. All cells default to centered vertical alignment. No row, column, or cell alignment metadata. Table cells preserve supported inline formatting, hyperlinks, and ScreenTips. Unmarked runs inherit native table fonts, sizes, and colors.",
+  "media_effects_syntax": {
+    "form": "media_effects mappings in deck or slide metadata, or an adjacent markdown-pptx:media_effects comment after a standalone image or video. Works with linked and reference-style media. Layout, video playback, and effects comments can appear in any order.",
+    "keys": [
+      "border",
+      "border_radius",
+      "shadow",
+      "reflection"
+    ],
+    "example": "![Dashboard](images/dashboard.png)\n\n<!-- markdown-pptx:media_effects\nborder: \"1pt solid var(--accent-1)\"\nborder_radius: 8pt\nshadow: \"2pt 2pt 6pt rgba(0, 0, 0, 0.25)\"\nreflection: \"4pt 30%\"\n-->",
+    "border": "width solid|dashed|dotted color, or none. Default none.",
+    "border_radius": "Nonnegative length, default 0. Rounds images and video frames without requiring a border. Clamped to half the shorter dimension.",
+    "shadow": "offset-x offset-y [blur] [color], or none. Default none. Blur defaults to 0. Color defaults to black at 25% opacity. Signed offsets. One outer shadow, without spread or inset.",
+    "reflection": "distance [amount%], or none. Default none. Always below. Amount defaults to 30% and must be greater than 0 and at most 100%. Visible reflected height, fading from 35% opacity to transparent with 1pt blur.",
+    "lengths": "pt, in, px, or unitless zero. One px equals 0.75pt. Nonnegative except shadow offsets.",
+    "colors": "Existing color expressions plus rgba(r, g, b, alpha), #RGBA, and #RRGGBBAA. RGBA alpha is 0..1. Theme colors remain editable.",
+    "quoting": "Quoted and unquoted YAML values work. Quote the entire setting containing a hex color. Prefer quoted compound values in examples.",
+    "fitting": "Native editable effects preserve original media and its size and position. Effects can extend beyond the content area or slide edge. Background images are unaffected.",
+    "inheritance": "Per property: element, slide, deck, then native defaults. Omitted keys inherit. none disables border, shadow, or reflection. border_radius: 0 disables rounding. Empty mappings preserve inheritance.",
+    "validation": "Unknown and duplicate keys, wrong element targets, inline settings, and orphan comments are errors. The unshipped image and generic effects comment forms are unsupported."
+  },
+  "table_effects_syntax": {
+    "border": "width solid|dashed|dotted color, or none. Applies to the outer perimeter. Internal gridlines retain native styling.",
+    "shadow": "offset-x offset-y [blur] [color], or none. Default none. Blur defaults to 0. Color defaults to black at 25% opacity. Signed offsets. One outer shadow, without spread or inset.",
+    "reflection": "distance [amount%], or none. Default none. Always below. Amount defaults to 30% and must be greater than 0 and at most 100%. Visible reflected height, fading from 35% opacity to transparent with 1pt blur.",
+    "lengths": "pt, in, px, or unitless zero. One px equals 0.75pt. Nonnegative except shadow offsets.",
+    "colors": "Existing color expressions plus rgba(r, g, b, alpha), #RGBA, and #RRGGBBAA. RGBA alpha is 0..1. Theme colors remain editable.",
+    "quoting": "Quoted and unquoted YAML values work. Quote the entire setting containing a hex color. Prefer quoted compound values in examples.",
+    "inheritance": "Per property: element, slide, deck, then native defaults. Omitted keys inherit. none disables border, shadow, or reflection. border_radius: 0 disables rounding. Empty mappings preserve inheritance.",
+    "validation": "Unknown and duplicate keys, wrong element targets, inline settings, and orphan comments are errors. The unshipped image and generic effects comment forms are unsupported.",
+    "form": "table_effects mappings in deck or slide metadata, or an adjacent markdown-pptx:table_effects comment after a complete pipe table.",
+    "keys": [
+      "border",
+      "shadow",
+      "reflection"
+    ],
+    "border_radius": "Unsupported. Specifying border_radius in table_effects at any scope is a syntax error.",
+    "example": "| Item | Value |\n| --- | ---: |\n| A | 1 |\n\n<!-- markdown-pptx:table_effects\nborder: \"1pt solid var(--accent-1)\"\nshadow: \"2pt 2pt 6pt rgba(0, 0, 0, 0.25)\"\nreflection: \"4pt 20%\"\n-->",
+    "fitting": "Native editable effects keep the table position, width, and zero-height row sizing. No added shapes or bitmap conversion."
+  },
+  "media_layout_syntax": {
+    "width": "auto, a positive percentage, or inches such as 4in. Capped to the assigned content box. Percentages use that box, not the slide. 50% on Two Content means half of one box.",
+    "align": "left, center, or right. Default center.",
+    "inheritance": "Per property: element, slide, deck, then default. Omitted keys inherit. Empty mappings preserve inheritance. Explicit width: auto restores automatic sizing.",
+    "comments": "Adjacent layout, effects, and video playback comments may follow their target in any order. Blank lines allowed. Unknown or duplicate keys, wrong targets, orphan settings, and inline comments are errors.",
+    "form": "media_layout mappings in deck or slide metadata, or a markdown-pptx:media_layout comment immediately after a standalone image or video.",
+    "keys": [
+      "width",
+      "align",
+      "valign"
+    ],
+    "defaults": {
+      "width": "auto",
+      "align": "center",
+      "valign": "top"
+    },
+    "valign": "top, middle, or bottom. Default top.",
+    "fitting": "Preserve aspect ratio and fit within width and height. Auto uses the largest proportional fit. Height may further limit the requested width. Effects do not influence fitting. Background images are unaffected.",
+    "video_aliases": "Existing video width, align, and valign remain element aliases. Repeating a property in both video and media_layout element comments is an error.",
+    "example": "![Dashboard](photo.png)\n\n<!-- markdown-pptx:media_layout\nwidth: 75%\nalign: right\nvalign: top\n-->"
+  },
+  "table_layout_syntax": {
+    "width": "auto, a positive percentage, or inches such as 4in. Capped to the assigned content box. Percentages use that box, not the slide. 50% on Two Content means half of one box.",
+    "align": "left, center, or right. Default center.",
+    "inheritance": "Per property: element, slide, deck, then default. Omitted keys inherit. Empty mappings preserve inheritance. Explicit width: auto restores automatic sizing.",
+    "comments": "Adjacent layout, effects, and video playback comments may follow their target in any order. Blank lines allowed. Unknown or duplicate keys, wrong targets, orphan settings, and inline comments are errors.",
+    "form": "table_layout mappings in deck or slide metadata, or a markdown-pptx:table_layout comment immediately after a complete pipe table.",
+    "keys": [
+      "width",
+      "align"
+    ],
+    "defaults": {
+      "width": "auto",
+      "align": "center"
+    },
+    "valign": "Always top. A valign setting is rejected at every scope.",
+    "fitting": "Auto uses full content-box width. Narrower tables retain zero-height native row sizing. Text may wrap and rows may grow taller. No automatic shrinking. Cell alignment remains independent. Effects do not influence placement.",
+    "example": "| Item | Count |\n| --- | ---: |\n| Design | 3 |\n\n<!-- markdown-pptx:table_layout\nwidth: 50%\nalign: center\n-->"
+  },
+  "heading_layout_syntax": {
+    "form": "A nonempty H1 alone, or followed by exactly one top-level H2 and no other content. First slide uses Title Slide. Later slides use Section Header.",
+    "subtitle": "The sole H2 becomes a native subtitle and inherits template formatting. Inline Markdown formatting is preserved.",
+    "precedence": "Explicit slide layout wins. A divider selects Two Content first. Heading inference overrides the deck default.",
+    "positions": "First means the first H1 in the source, including hidden slides. Ordinary comments and reference definitions do not count as content. ATX and Setext spellings behave identically.",
+    "ordinary_content": "Multiple H2s, H3 through H6, or any additional paragraph, list, code, image, table, or video keep ordinary layout behavior. H2 never starts a slide. No slide-level CLI option is needed.",
+    "example": "# Launch plan\n## From prototype to production\n\n# Delivery\n## Scope, dates, and ownership\n\n# Milestones\n\n- Design approved\n- Launch scheduled\n"
+  }
 }

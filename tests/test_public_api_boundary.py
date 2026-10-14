@@ -26,8 +26,11 @@ def test_production_code_uses_only_public_pptx_apis() -> None:
     for path in source_dir.rglob("*.py"):
         # ps-python-pptx embeds local media but does not expose online video
         # relationships or the playback timing controls used by video blocks.
-        video_xml_modules = {"pptx.opc.constants", "pptx.oxml.ns", "pptx.oxml.xmlchemy"}
-        video_xml_attributes = {"_element", "part"}
+        compatibility_modules = {
+            "video.py": {"pptx.opc.constants", "pptx.oxml.ns", "pptx.oxml.xmlchemy"},
+            "native_pptx.py": {"pptx.oxml.ns", "pptx.oxml.xmlchemy"},
+        }
+        compatibility_attributes = {"video.py": {"_element", "part"}, "native_pptx.py": {"_element"}}
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             modules = []
             if isinstance(node, ast.Import):
@@ -36,12 +39,12 @@ def test_production_code_uses_only_public_pptx_apis() -> None:
                 modules = [node.module or ""]
             if any(
                 name == prefix or name.startswith(prefix + ".") for name in modules for prefix in forbidden_modules
-            ) and not (path.name == "video.py" and all(name in video_xml_modules for name in modules)):
+            ) and not all(name in compatibility_modules.get(path.name, set()) for name in modules):
                 violations.append(f"{path.name}:{node.lineno} imports an XML/package implementation")
             if (
                 isinstance(node, ast.Attribute)
                 and node.attr in forbidden_attributes
-                and not (path.name == "video.py" and node.attr in video_xml_attributes)
+                and node.attr not in compatibility_attributes.get(path.name, set())
             ):
                 violations.append(f"{path.name}:{node.lineno} accesses {node.attr}")
     assert not violations, "\n".join(violations)

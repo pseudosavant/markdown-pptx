@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from copy import copy
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -11,7 +12,15 @@ from markdown_it.token import Token
 from mdit_py_plugins.subscript import sub_plugin
 from mdit_py_plugins.superscript import superscript_plugin
 
+from markdown_slides.effect_settings import EFFECT_COMMENT_RE, RESERVED_EFFECT_COMMENT_RE, parse_effect_settings
 from markdown_slides.errors import ParseError, UnsupportedContentError
+from markdown_slides.layout_settings import (
+    LAYOUT_COMMENT_RE,
+    MEDIA_LAYOUT_KEYS,
+    merge_layouts,
+    parse_layout_comment,
+    parse_layout_values,
+)
 from markdown_slides.models import BodyContent, ImageBlock, InlineText, ListContext, Paragraph, TableBlock, VideoBlock
 
 MD = MarkdownIt("commonmark").enable(["table", "strikethrough"])
@@ -22,6 +31,9 @@ FOOTNOTE_RE = re.compile(r"\[\^[^\]\r\n]+\](?::)?")
 VIDEO_KEYS = {"width", "aspect_ratio", "align", "valign", "start", "fullscreen", "loop", "mute"}
 YOUTUBE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 VIDEO_COMMENT_RE = re.compile(r"^<!-- markdown-pptx:video\b")
+RESERVED_COMMENT_RE = re.compile(r"<!--\s*markdown-pptx:")
+ELEMENT_COMMENT_RE = re.compile(r"^<!-- markdown-pptx:(?P<category>[\w-]+)\b")
+ELEMENT_COMMENT_CATEGORIES = {"media_effects", "table_effects", "media_layout", "table_layout", "video"}
 
 
 class _VideoSettingsLoader(yaml.SafeLoader):
@@ -69,15 +81,24 @@ class _Cursor:
 
 
 def parse_body_regions(
-    text: str, *, two_content: bool, source_name: str, slide_index: int, base_line: int, references: dict | None = None
+    text: str,
+    *,
+    two_content: bool,
+    source_name: str,
+    slide_index: int,
+    base_line: int,
+    references: dict | None = None,
+    infer_two_content: bool = False,
 ) -> list[BodyContent]:
-    tokens = MD.parse(text, {"references": dict(references or {})})
+    tokens = _split_settings_comments(MD.parse(text, {"references": dict(references or {})}))
     _validate_supported_tokens(
         tokens,
         source_name=source_name,
         slide_index=slide_index,
         base_line=base_line,
     )
+    if infer_two_content and any(token.type == "hr" and token.level == 0 for token in tokens):
+        two_content = True
     separators = []
     for index, token in enumerate(tokens):
         if token.type != "hr":
@@ -85,7 +106,7 @@ def parse_body_regions(
         if not two_content or token.level != 0:
             raise _unsupported_token_error(
                 token,
-                "Horizontal rules require layout: Two Content and must appear at the top level of the slide body.",
+                "Horizontal rules must appear at the top level and require layout: Two Content when a slide layout is explicitly set.",
                 source_name,
                 slide_index,
                 base_line,
@@ -111,6 +132,27 @@ def parse_body_regions(
     return regions
 
 
+def _split_settings_comments(tokens: list[Token]) -> list[Token]:
+    result = []
+    pattern = re.compile(
+        r"<!-- markdown-pptx:(?:media_effects|table_effects|media_layout|table_layout|video)\b.*?-->", re.DOTALL
+    )
+    for token in tokens:
+        if token.type == "html_block":
+            matches = list(pattern.finditer(token.content))
+            if len(matches) > 1 and not pattern.sub("", token.content).strip():
+                for match in matches:
+                    split = copy(token)
+                    split.content = match.group() + "\n"
+                    if token.map:
+                        start = token.map[0] + token.content[: match.start()].count("\n")
+                        split.map = [start, start + split.content.count("\n")]
+                    result.append(split)
+                continue
+        result.append(token)
+    return result
+
+
 def _validate_supported_tokens(
     tokens: list[Token],
     *,
@@ -118,6 +160,7 @@ def _validate_supported_tokens(
     slide_index: int,
     base_line: int,
 ) -> None:
+    _validate_metadata_comments(tokens, source_name=source_name, slide_index=slide_index, base_line=base_line)
     for token in tokens:
         for child in token.children or []:
             if child.type != "text":
@@ -125,6 +168,45 @@ def _validate_supported_tokens(
             if FOOTNOTE_RE.search(child.content):
                 raise _unsupported_token_error(
                     token, "Footnotes are not supported.", source_name, slide_index, base_line
+                )
+
+
+def _validate_metadata_comments(tokens, *, source_name, slide_index, base_line, allow_element_comments=True):
+    for token in tokens:
+        if token.type == "html_block" and RESERVED_COMMENT_RE.search(token.content):
+            match = ELEMENT_COMMENT_RE.match(token.content.lstrip())
+            if token.level != 0 or match is None:
+                raise _token_error(
+                    token,
+                    "Metadata comments must be separate top-level blocks in the correct location.",
+                    source_name,
+                    slide_index,
+                    base_line,
+                )
+            if match.group("category") not in ELEMENT_COMMENT_CATEGORIES:
+                raise _token_error(
+                    token,
+                    f"Unknown or misplaced markdown-pptx comment: {match.group('category')}.",
+                    source_name,
+                    slide_index,
+                    base_line,
+                )
+            if not allow_element_comments:
+                raise _token_error(
+                    token,
+                    f"{match.group('category')} comments must follow their target inside a slide, not before the first H1.",
+                    source_name,
+                    slide_index,
+                    base_line,
+                )
+        for child in token.children or []:
+            if child.type == "html_inline" and RESERVED_COMMENT_RE.search(child.content):
+                raise _token_error(
+                    token,
+                    "Metadata comments must be separate blocks in the correct location.",
+                    source_name,
+                    slide_index,
+                    base_line,
                 )
 
 
@@ -201,7 +283,18 @@ def _parse_block_sequence(
             content.tables.append(
                 _parse_table(cursor, source_name=source_name, slide_index=slide_index, base_line=base_line)
             )
+            _element_settings_after(cursor, content.tables[-1], "table", source_name, slide_index, base_line)
         elif token.type in {"html_block", "html_inline"}:
+            if RESERVED_EFFECT_COMMENT_RE.match(token.content.lstrip()) or LAYOUT_COMMENT_RE.match(
+                token.content.lstrip()
+            ):
+                raise _token_error(
+                    token,
+                    "Element layout and effects comments must immediately follow the correct media or table target.",
+                    source_name,
+                    slide_index,
+                    base_line,
+                )
             if VIDEO_COMMENT_RE.match(token.content.lstrip()):
                 raise _token_error(
                     token,
@@ -247,6 +340,13 @@ def _parse_heading(
     open_token = cursor.tokens[cursor.index]
     level = int(open_token.tag[1])
     inline = cursor.tokens[cursor.index + 1]
+    if any(
+        child.type == "html_inline" and EFFECT_COMMENT_RE.match(child.content.lstrip())
+        for child in inline.children or []
+    ):
+        raise _token_error(
+            inline, "Image settings must be a separate block after the image.", source_name, slide_index, base_line
+        )
     if level == 1:
         raise _unsupported_token_error(
             open_token, "H1 headings are only allowed as slide boundaries.", source_name, slide_index, base_line
@@ -270,6 +370,13 @@ def _parse_paragraph(
 ) -> None:
     inline = cursor.tokens[cursor.index + 1]
     if any(
+        child.type == "html_inline" and EFFECT_COMMENT_RE.match(child.content.lstrip())
+        for child in inline.children or []
+    ):
+        raise _token_error(
+            inline, "Image settings must be a separate block after the image.", source_name, slide_index, base_line
+        )
+    if any(
         child.type == "html_inline" and VIDEO_COMMENT_RE.match(child.content.lstrip())
         for child in inline.children or []
     ):
@@ -285,6 +392,7 @@ def _parse_paragraph(
         image = non_space_children[0]
         content.images.append(_image_block(image))
         cursor.index += 3
+        _element_settings_after(cursor, content.images[-1], "media", source_name, slide_index, base_line)
         return
     if len(non_space_children) == 3 and [child.type for child in non_space_children] == [
         "link_open",
@@ -304,6 +412,7 @@ def _parse_paragraph(
             )
         )
         cursor.index += 3
+        _element_settings_after(cursor, content.images[-1], "media", source_name, slide_index, base_line)
         return
     if (
         quote_depth == 0
@@ -349,13 +458,73 @@ def _video_from_link(
 ) -> VideoBlock:
     link_token = cursor.tokens[cursor.index]
     cursor.index += 3
-    settings_token = None
-    if cursor.index < len(cursor.tokens):
+    comments = _collect_element_comments(
+        cursor, {"video", "media_effects", "media_layout"}, source_name, slide_index, base_line
+    )
+    video = _parse_video(source, poster, comments.get("video"), link_token, source_name, slide_index, base_line)
+    _apply_element_comments(video, comments, "media", source_name, slide_index, base_line)
+    return video
+
+
+def _collect_element_comments(cursor, allowed, source_name, slide_index, base_line):
+    comments = {}
+    while cursor.index < len(cursor.tokens):
         candidate = cursor.tokens[cursor.index]
-        if candidate.type == "html_block" and VIDEO_COMMENT_RE.match(candidate.content.lstrip()):
-            settings_token = candidate
-            cursor.index += 1
-    return _parse_video(source, poster, settings_token, link_token, source_name, slide_index, base_line)
+        if candidate.type != "html_block":
+            break
+        match = EFFECT_COMMENT_RE.match(candidate.content.lstrip()) or LAYOUT_COMMENT_RE.match(
+            candidate.content.lstrip()
+        )
+        if VIDEO_COMMENT_RE.match(candidate.content.lstrip()):
+            category = "video"
+        elif match:
+            category = match.group("category")
+        else:
+            break
+        if category not in allowed:
+            raise _token_error(
+                candidate, f"This element does not accept {category}.", source_name, slide_index, base_line
+            )
+        if category in comments:
+            raise _token_error(
+                candidate, f"Duplicate {category} settings comment.", source_name, slide_index, base_line
+            )
+        comments[category] = candidate
+        cursor.index += 1
+    return comments
+
+
+def _apply_element_comments(element, comments, kind, source_name, slide_index, base_line):
+    category = f"{kind}_effects"
+    if category in comments:
+        token = comments[category]
+        element.effects = parse_effect_settings(
+            token.content,
+            source_name=source_name,
+            slide_index=slide_index,
+            line=base_line + (token.map[0] if token.map else 0),
+            category=category,
+        )
+    category = f"{kind}_layout"
+    if category in comments:
+        token = comments[category]
+        layout = parse_layout_comment(
+            token.content,
+            source_name=source_name,
+            slide_index=slide_index,
+            line=base_line + (token.map[0] if token.map else 0),
+            category=category,
+        )
+        duplicates = layout.specified & (element.layout.specified if element.layout else set())
+        if duplicates:
+            raise _token_error(
+                token,
+                f"Duplicate element placement setting: {', '.join(sorted(duplicates))}.",
+                source_name,
+                slide_index,
+                base_line,
+            )
+        element.layout = merge_layouts(element.layout, layout)
 
 
 def _image_block(token: Token, *, href: str | None = None, link_title: str | None = None) -> ImageBlock:
@@ -366,6 +535,13 @@ def _image_block(token: Token, *, href: str | None = None, link_title: str | Non
         href=href or None,
         link_title=link_title,
     )
+
+
+def _element_settings_after(cursor, element, kind, source_name, slide_index, base_line):
+    comments = _collect_element_comments(
+        cursor, {f"{kind}_effects", f"{kind}_layout"}, source_name, slide_index, base_line
+    )
+    _apply_element_comments(element, comments, kind, source_name, slide_index, base_line)
 
 
 def _image_alt_text(tokens: list[Token]) -> str:
@@ -670,13 +846,17 @@ def _parse_video(
             raise fail("Local video source must be an MP4 file.")
         source = unquote(source)
         kind = "local_mp4"
-    width = data.get("width", "auto")
-    if not isinstance(width, str) or not (
-        width == "auto" or re.fullmatch(r"(?:\d+(?:\.\d+)?)%|(?:\d+(?:\.\d+)?)in", width)
-    ):
-        raise fail("Video width must be auto, a percentage such as 75%, or inches such as 6in.")
-    if width != "auto" and float(width[:-1] if width.endswith("%") else width[:-2]) <= 0:
-        raise fail("Video width must be greater than zero.")
+    try:
+        layout = parse_layout_values(
+            {key: value for key, value in data.items() if key in MEDIA_LAYOUT_KEYS},
+            category="media_layout",
+            source_name=source_name,
+            slide_index=slide_index,
+            line=base_line + (token.map[0] if token.map else 0),
+        )
+    except ParseError as exc:
+        raise fail(str(exc)) from exc
+    width, align, valign = layout.width, layout.align, layout.valign
     aspect = data.get("aspect_ratio")
     aspect_value = None
     if aspect is not None:
@@ -686,10 +866,6 @@ def _parse_video(
         if numerator <= 0 or denominator <= 0:
             raise fail("Video aspect_ratio values must be greater than zero.")
         aspect_value = numerator / denominator
-    align = data.get("align", "center")
-    valign = data.get("valign", "middle")
-    if align not in {"left", "center", "right"} or valign not in {"top", "middle", "bottom"}:
-        raise fail("Video align must be left, center, or right. Valign must be top, middle, or bottom.")
     if poster is not None and (
         not isinstance(poster, str)
         or not poster.strip()
@@ -720,6 +896,7 @@ def _parse_video(
         data.get("fullscreen", False),
         data.get("loop", False),
         data.get("mute", False),
+        layout=layout if layout.specified else None,
     )
 
 
@@ -740,17 +917,22 @@ def _parse_table(cursor: _Cursor, *, source_name: str, slide_index: int, base_li
     cursor.index += 1
     headers: list[list[InlineText]] = []
     rows: list[list[list[InlineText]]] = []
+    alignments: list[str] = []
     current_row: list[list[InlineText]] | None = None
     while cursor.index < len(cursor.tokens):
         token = cursor.tokens[cursor.index]
         if token.type == "table_close":
             cursor.index += 1
-            return TableBlock(headers=headers[0] if headers else [], rows=rows)
+            return TableBlock(headers=headers[0] if headers else [], rows=rows, alignments=alignments)
         if token.type == "tr_open":
             current_row = []
             cursor.index += 1
             continue
         if token.type in {"th_open", "td_open"}:
+            if token.type == "th_open":
+                style = token.attrGet("style") or ""
+                alignment = style.partition(":")[2].strip().rstrip(";")
+                alignments.append(alignment if alignment in {"left", "center", "right"} else "left")
             inline = cursor.tokens[cursor.index + 1]
             cell = _parse_inline(inline.children or [])
             if current_row is None:
@@ -821,7 +1003,7 @@ def _parse_inline_with_index(tokens: list[Token], index: int, end_types: set[str
     return output, index
 
 
-def _token_error(token: Token, message: str, source_name: str, slide_index: int, base_line: int) -> ParseError:
+def _token_error(token: Token, message: str, source_name: str, slide_index: int | None, base_line: int) -> ParseError:
     line = base_line + token.map[0] if token.map else None
     return ParseError("invalid_markdown", message, line=line, slide_index=slide_index, input_path=source_name)
 

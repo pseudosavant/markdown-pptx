@@ -72,21 +72,39 @@ If no output path is supplied, the tool writes a `.pptx` beside the Markdown inp
 
 Soft line breaks become spaces. Use two trailing spaces or a trailing backslash for a visible line break within a paragraph. Task list markers become static checkboxes. Fenced code can use a language label for editable syntax coloring. Image descriptions, optional titles, and links around standalone images are preserved.
 
-Choose the layout before authoring each slide. `Title and Content` accepts text flow, one image, one table, or one video. Use `Two Content` for text beside an image, table, or video, or for two independent text areas. Keep content concise enough for the available space. Use real line breaks for intentional breaks and allow PowerPoint to wrap ordinary prose.
+Ordinary slides default to `Title and Content`. Omit `layout` when a slide uses its effective default. Omit the slide metadata comment entirely when no settings or notes are needed. Set `layout` in the deck comment when most slides need a different default. Resolution is explicit slide layout, inferred `Two Content` from one top-level thematic break, inferred title or section layout from heading-only content, deck layout, then `Title and Content`. `Title and Content` accepts text flow, one image, one table, or one video. Use a thematic break for text beside an image, table, or video, or for two independent text areas. Keep content concise enough for the available space. Use real line breaks for intentional breaks and allow PowerPoint to wrap ordinary prose.
+
+Use `hidden: true` in slide metadata for backup slides that PowerPoint should skip during the slide show. Hidden slides keep their content and notes in the editable presentation. Visibility defaults to true.
 
 Reuse link and image reference definitions across the deck, including in titles. Definitions may precede the first slide after the deck metadata comment. The first definition wins. `--examples references` shows full, collapsed, and shortcut references. Optional link titles become PowerPoint ScreenTips. A linked image has separate image metadata and link ScreenTip titles.
 
-Indent code, headings, and continuation paragraphs within their list item. Comments inside lists are ignored. Images inside lists are rejected. All nested lists count toward the three-level limit, including lists inside quotes. Ordered values outside 1 through 32767 use editable text prefixes that do not automatically renumber in PowerPoint.
+Indent code, headings, and continuation paragraphs within their list item. Ordinary authoring comments inside lists are ignored. Reserved `markdown-pptx:` directives in lists, quotes, inline content, or incorrect locations are errors. Unknown directives are errors. After optional deck metadata, only ordinary comments, blank lines, and reference definitions may precede the first H1. Element metadata requires a target inside a slide. Code examples remain literal. Images inside lists are rejected. All nested lists count toward the three-level limit, including lists inside quotes. Ordered values outside 1 through 32767 use editable text prefixes that do not automatically renumber in PowerPoint.
+
+## Infer Title And Section Layouts
+
+A nonempty H1 alone, or followed by exactly one top-level H2 and no other content, uses Title Slide for the first slide and Section Header later. First means the first H1 in the source, even if hidden. The sole H2 becomes the native subtitle and inherits template formatting. ATX and Setext headings behave identically. Comments and reference definitions add no visible content.
+
+```markdown
+# Launch plan
+## From prototype to production
+
+# Delivery
+## Scope, dates, and ownership
+
+# Milestones
+
+- Design approved
+- Launch scheduled
+```
+
+Multiple H2s, H3 through H6, or any additional paragraph, list, code, image, table, or video keep ordinary layout behavior. H1 remains the only slide boundary. Explicit slide layout wins, then a content divider selects Two Content, then title or section inference, then the deck default. Use explicit Title Only when needed. Empty H1 with no body still defaults to Blank when no layout is configured. Use `--examples heading-layouts` for examples.
 
 ## Author Two Content Slides
 
-Set `layout: Two Content` and insert exactly one top-level thematic break. Content before the break fills the left placeholder. Content after it fills the right placeholder:
+Insert exactly one top-level thematic break to select `Two Content` automatically. No layout metadata is needed. Content before the break fills the left placeholder. Content after it fills the right placeholder:
 
 ```markdown
 # Compare options
-<!-- markdown-pptx:slide
-layout: Two Content
--->
 
 ## First option
 
@@ -101,7 +119,7 @@ layout: Two Content
 - More preparation
 ```
 
-Each side independently accepts text flow, one image, one table, or one video. Either side may be empty. Use `***` on its own line with blank lines around it. `---` and `___` work when parsed as thematic breaks, but `---` can also be a Setext H2 underline. A divider does not start a new slide or draw a line. More than one divider, nested dividers, and dividers on other layouts are rejected. The template must provide exactly two non-overlapping content placeholders arranged left to right. Three or more content areas are unsupported.
+Each side independently accepts text flow, one image, one table, or one video. Either side may be empty. Use `***` on its own line with blank lines around it. `---` and `___` work when parsed as thematic breaks, but `---` can also be a Setext H2 underline. A divider does not start a new slide or draw a line. More than one divider and nested dividers are rejected. An explicit slide layout takes precedence over inference. A divider with an incompatible explicit layout is an error. Explicit `Two Content` at slide or deck level still requires the divider. The template must provide exactly two non-overlapping content placeholders arranged left to right. Three or more content areas are unsupported.
 
 ## Use Templates Carefully
 
@@ -119,7 +137,6 @@ The first embedded master is the default unless `--master` selects another. A sl
 # Financial summary
 <!-- markdown-pptx:slide
 master: 2
-layout: Title and Content
 -->
 ```
 
@@ -154,14 +171,13 @@ Keep the default Pygments palette unless theme colors are wanted. Set `code_high
 
 Theme modes use Dark 1 or Light 1 for ordinary code and comments, plus Accents 1, 2, and 3 for token categories. Native brightness adjustments target 4.5:1 contrast. Check `code_highlighting` entries in JSON render output for warnings and `target_met`. Image and gradient analysis is approximate. If contrast is insufficient or the background is assumed, select a better background or variant and inspect the rendered slide. Later PowerPoint theme edits require regeneration to recalculate contrast.
 
-## Style Tables With Slide Metadata
+## Style Tables With Deck And Slide Metadata
 
-Keep pipe-table syntax standard and put PowerPoint table-style flags in the slide metadata comment. Use `table` only when the slide contains at least one table. These options apply to both tables on a Two Content slide:
+Keep pipe-table syntax standard and put PowerPoint table-style flags in deck or slide metadata. Slide `table` settings require at least one table and apply to both tables on a Two Content slide. Slide settings override deck defaults per property:
 
 ```text
 # Quarterly summary
 <!-- markdown-pptx:slide
-layout: Title and Content
 table:
   header_row: true
   total_row: true
@@ -178,6 +194,53 @@ table:
 ```
 
 The defaults are `header_row: true`, `banded_rows: true`, and false for the other four options. These settings control native PowerPoint styling. They do not calculate totals, and disabling `header_row` does not change Markdown's syntactic header row.
+
+Optional `header_fill`, `row_fill`, and `banded_row_fill` colors belong under `table` at deck or slide level. Unspecified fills keep native styling. Header fill requires `header_row: true`. Banded fill requires `banded_rows: true` and begins with the first body row. Body fill and banded fill leave total-row styling intact. Color-ignore flags strip fills at their respective scope. Markdown has no total-row syntax. Set `total_row: true` to style the final data row. The word `Total` alone has no special behavior.
+
+Tables default to the content area's full width. PowerPoint sizes zero-height rows to their content when it opens or renders the file. Oversized tables are not automatically shrunk. Use Markdown separator colons for horizontal column alignment: `:---` for left, `:---:` for center, and `---:` for right. Unmarked columns default to left. All cells default to centered vertical alignment. Supported inline formatting, hyperlinks, and ScreenTips work in headers and body cells. Unmarked runs inherit native table styling. Do not add row, column, or cell alignment settings.
+
+## Place Media And Tables
+
+Content images and videos default to horizontal centering and top alignment. Tables always stay top aligned and default to full content-box width. Use `media_layout` or `table_layout` mappings in deck or slide metadata, or adjacent element comments with the same names. Each property resolves through element, slide, deck, then default. Omitted keys inherit. Empty mappings preserve inheritance.
+
+Both categories accept `width: auto`, a positive percentage, or inches such as `4in`, and `align: left|center|right`, default center. Media also accepts `valign: top|middle|bottom`, default top. Tables reject `valign` at every scope. Keep table-cell alignment in ordinary Markdown separator colons.
+
+```markdown
+<!-- markdown-pptx:deck
+media_layout:
+  align: left
+table_layout:
+  width: 80%
+-->
+
+# Dashboard
+<!-- markdown-pptx:slide
+media_layout:
+  valign: middle
+-->
+
+![Dashboard](images/dashboard.png)
+
+<!-- markdown-pptx:media_layout
+width: 75%
+align: right
+-->
+
+# Revenue
+
+| Region | Revenue |
+| --- | ---: |
+| North | $50,000 |
+
+<!-- markdown-pptx:table_layout
+width: 50%
+align: center
+-->
+```
+
+Percentages use the element's own content box. On Two Content slides, 50% means half of one box. Widths are capped to the box. Media keeps its aspect ratio and also fits the height. Media auto means the largest proportional fit. Table auto restores full width. Narrower tables may wrap text and grow taller. Effects do not affect placement or sizing. Background images retain their existing behavior.
+
+Layout, effects, and video playback comments immediately follow their target. Blank lines are allowed. The comments may appear in any order. Wrong targets, duplicate keys or categories, inline settings, and orphan comments are errors. Existing video width, align, and valign keys remain element placement aliases. Do not repeat a placement property in both video and media_layout comments. Use `--examples placement` for a complete source.
 
 ## Add Videos
 
@@ -203,6 +266,29 @@ mute: true
 The video comment is optional and must follow the link as a separate block. It accepts `width`, `aspect_ratio`, `align`, and `valign` for both sources. MP4 also accepts `start`, `fullscreen`, `loop`, and `mute`. It does not accept `source` or `poster`. MP4 defaults to a poster generated from its first decoded frame. YouTube defaults to 16:9 and uses the online player. Relative MP4 and poster paths resolve from the Markdown directory. Remote MP4 downloads respect `--max-remote-video-mb` and `--no-remote-videos`.
 
 ## Images And Paths
+
+Use `media_effects` and `table_effects` mappings in deck or slide metadata for defaults. Media defaults apply to content images and videos. Table defaults apply to tables. Background images are unaffected. Use a separate adjacent `markdown-pptx:media_effects` comment for one image or video, or `markdown-pptx:table_effects` after one complete pipe table:
+
+```markdown
+# Product dashboard
+
+![Dashboard](images/dashboard.png)
+
+<!-- markdown-pptx:media_effects
+border: "1pt solid var(--accent-1)"
+border_radius: 8pt
+shadow: "2pt 2pt 6pt rgba(0, 0, 0, 0.25)"
+reflection: "4pt 30%"
+-->
+```
+
+Each effect property resolves through element settings, slide defaults, deck defaults, then native styling. Omitted keys inherit. Empty mappings retain inheritance. Use `none` to disable border, shadow, or reflection and `border_radius: 0` to disable rounding. Media accepts border, corner radius, shadow, and reflection. Tables accept border, shadow, and reflection. Specifying table `border_radius` is an error at every scope. A table border affects only its outer perimeter.
+
+Comments must immediately follow the correct standalone element. Blank lines are allowed. Layout, video playback, and effects comments may appear together in any order. Wrong targets, duplicates, inline settings, and orphan comments are errors. The unshipped image and generic effects comment forms are unsupported.
+
+Lengths accept `pt`, `in`, `px`, or unitless zero. Shadow syntax is horizontal offset, vertical offset, optional blur, and optional color. Reflection syntax is distance followed by optional reflected height percentage, default 30%. It is always below and fades to transparent. Effects keep the object's size and position. They can extend beyond the content area or slide edge. Corner radius rounds images and video frames without requiring a border. Inspect `--syntax` and `--examples effects` for complete examples.
+
+Quoted and unquoted YAML values are accepted. Quote compound effect values in authored examples. Always quote the entire value when it contains a hex color, such as `border: "1pt solid #445566"`, because YAML otherwise discards the color as a comment.
 
 Relative image paths resolve from the Markdown file's directory. For stdin, provide both an output path and `--base-dir`:
 

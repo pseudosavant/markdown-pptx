@@ -9,6 +9,8 @@ import tempfile
 from importlib.metadata import version
 from pathlib import Path
 
+from pptx import Presentation
+
 from markdown_slides import __version__, skill
 from markdown_slides.cli import main
 
@@ -48,7 +50,29 @@ def smoke(*, expect_local: bool) -> None:
             else:
                 assert "Updated managed skill" in stderr.getvalue()
                 assert skill.skill_status()["managed_version"] == __version__
-
+            source = Path(directory) / "smoke.md"
+            output = Path(directory) / "smoke.pptx"
+            source.write_text(
+                "<!-- markdown-pptx:deck\nlayout: Title Only\ntable_layout:\n  width: 50%\n"
+                "table_effects:\n  shadow: 2pt 2pt 4pt\n-->\n"
+                "# Cover\n\n## Native subtitle\n\n# Section\n\n"
+                "# Comparison\n\nContext\n\n***\n\n| Item | Value |\n| --- | ---: |\n"
+                "| **Bold** | [Guide](https://example.com) |\n"
+                "<!-- markdown-pptx:table_layout\nalign: right\n-->\n",
+                encoding="utf-8",
+            )
+            stdout, stderr = io.StringIO(), io.StringIO()
+            assert main([str(source), str(output), "--json"], stdout=stdout, stderr=stderr) == 0
+            assert json.loads(stdout.getvalue())["slides"] == 3
+            presentation = Presentation(output)
+            assert [slide.slide_layout.name for slide in presentation.slides] == [
+                "Title Slide",
+                "Section Header",
+                "Two Content",
+            ]
+            table = next(shape.table for shape in presentation.slides[2].shapes if shape.has_table)
+            assert table.cell(1, 0).text_frame.paragraphs[0].runs[0].font.bold is True
+            assert table.cell(1, 1).text_frame.paragraphs[0].runs[0].hyperlink.address == "https://example.com"
             # Explicit installation is available for both packaged and local builds.
             assert main(["skill", "install"], stdout=io.StringIO(), stderr=io.StringIO()) == 0
             assert path.read_bytes() == skill.render_skill().encode("utf-8")

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "markdown-pptx"
-version = "2.0.0"
+version = "3.0.0"
 description = "Convert constrained Markdown slide decks into editable PowerPoint presentations."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -46,6 +46,9 @@ Releases = "https://github.com/pseudosavant/markdown-pptx/releases"
 
 [project.scripts]
 markdown-pptx = "markdown_slides.cli:main"
+
+[tool.hatch.build]
+exclude = ["/sample/* - PNG export/**", "/sample/*-images/**"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/markdown_slides"]

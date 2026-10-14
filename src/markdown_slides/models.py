@@ -54,12 +54,58 @@ class Paragraph:
 
 
 @dataclass(slots=True)
+class EffectColor:
+    value: str
+    opacity: float = 1.0
+
+
+@dataclass(slots=True)
+class EffectBorder:
+    width_pt: float
+    style: str
+    color: EffectColor
+
+
+@dataclass(slots=True)
+class EffectShadow:
+    offset_x_pt: float
+    offset_y_pt: float
+    blur_pt: float = 0.0
+    color: EffectColor = field(default_factory=lambda: EffectColor("#000000", 0.25))
+
+
+@dataclass(slots=True)
+class EffectReflection:
+    distance_pt: float
+    amount: float = 0.3
+
+
+@dataclass(slots=True)
+class Effects:
+    border: EffectBorder | None = None
+    border_radius_pt: float = 0.0
+    shadow: EffectShadow | None = None
+    reflection: EffectReflection | None = None
+    specified: set[str] = field(default_factory=set)
+
+
+@dataclass(slots=True)
+class ObjectLayout:
+    width: str = "auto"
+    align: str = "center"
+    valign: str = "top"
+    specified: set[str] = field(default_factory=set)
+
+
+@dataclass(slots=True)
 class ImageBlock:
     src: str
     alt: str
     title: str | None = None
     href: str | None = None
     link_title: str | None = None
+    effects: Effects | None = None
+    layout: ObjectLayout | None = None
 
 
 @dataclass(slots=True)
@@ -69,18 +115,23 @@ class VideoBlock:
     width: str = "auto"
     aspect_ratio: float | None = None
     align: str = "center"
-    valign: str = "middle"
+    valign: str = "top"
     poster: str | None = None
     start: str = "click"
     fullscreen: bool = False
     loop: bool = False
     mute: bool = False
+    effects: Effects | None = None
+    layout: ObjectLayout | None = None
 
 
 @dataclass(slots=True)
 class TableBlock:
     headers: list[list[InlineText]]
     rows: list[list[list[InlineText]]]
+    alignments: list[str] = field(default_factory=list)
+    effects: Effects | None = None
+    layout: ObjectLayout | None = None
 
 
 @dataclass(slots=True)
@@ -91,6 +142,9 @@ class TableOptions:
     last_column: bool = False
     banded_rows: bool = True
     banded_columns: bool = False
+    header_fill: str | None = None
+    row_fill: str | None = None
+    banded_row_fill: str | None = None
 
 
 @dataclass(slots=True)
@@ -164,6 +218,11 @@ class Slide:
     title_fragments: list[InlineText] = field(default_factory=list)
     secondary_body: BodyContent | None = None
     code_highlighting: str | None = None
+    hidden: bool = False
+    media_effects: Effects | None = None
+    table_effects: Effects | None = None
+    media_layout: ObjectLayout | None = None
+    table_layout: ObjectLayout | None = None
 
     @property
     def content_regions(self) -> list[BodyContent]:
@@ -182,3 +241,9 @@ class Deck:
     background: Background | None
     slides: list[Slide]
     code_highlighting: str = "default"
+    layout: str = "Title and Content"
+    media_effects: Effects | None = None
+    table_effects: Effects | None = None
+    table_options: TableOptions = field(default_factory=TableOptions)
+    media_layout: ObjectLayout | None = None
+    table_layout: ObjectLayout | None = None

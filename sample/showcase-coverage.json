@@ -1,0 +1,489 @@
+{
+  "scope": "Every supported option and syntax form, with meaningful combinations. Mutually exclusive deck choices appear in separately validated complete Markdown source examples.",
+  "sources": [
+    "default-showcase.md",
+    "advanced-showcase.md"
+  ],
+  "advanced_groups": {
+    "slide_metadata": 2,
+    "element_metadata": 55
+  },
+  "legacy_migration": [
+    {
+      "legacy_slide": 2,
+      "legacy_heading": "# What markdown-pptx is",
+      "file": "default-showcase.md",
+      "slide": 4,
+      "heading": "# What markdown-pptx is"
+    },
+    {
+      "legacy_slide": 4,
+      "legacy_heading": "# Basic CLI usage",
+      "file": "default-showcase.md",
+      "slide": 5,
+      "heading": "# Basic CLI usage"
+    },
+    {
+      "legacy_slide": 17,
+      "legacy_heading": "# Body text with hyperlinks",
+      "file": "default-showcase.md",
+      "slide": 6,
+      "heading": "# Body text with hyperlinks"
+    },
+    {
+      "legacy_slide": 18,
+      "legacy_heading": "# Inline text styling",
+      "file": "default-showcase.md",
+      "slide": 7,
+      "heading": "# Inline text styling"
+    },
+    {
+      "legacy_slide": 19,
+      "legacy_heading": "# Line breaks",
+      "file": "default-showcase.md",
+      "slide": 8,
+      "heading": "# Line breaks"
+    },
+    {
+      "legacy_slide": 20,
+      "legacy_heading": "# H2 through H6 headings",
+      "file": "default-showcase.md",
+      "slide": 9,
+      "heading": "# H2 through H6 headings"
+    },
+    {
+      "legacy_slide": 21,
+      "legacy_heading": "Setext H1 slide\n===============",
+      "file": "default-showcase.md",
+      "slide": 10,
+      "heading": "Setext H1 slide\n==============="
+    },
+    {
+      "legacy_slide": 22,
+      "legacy_heading": "# Bulleted list",
+      "file": "default-showcase.md",
+      "slide": 11,
+      "heading": "# Bulleted list"
+    },
+    {
+      "legacy_slide": 23,
+      "legacy_heading": "# Nested lists",
+      "file": "default-showcase.md",
+      "slide": 12,
+      "heading": "# Nested lists"
+    },
+    {
+      "legacy_slide": 24,
+      "legacy_heading": "# Numbered list",
+      "file": "default-showcase.md",
+      "slide": 13,
+      "heading": "# Numbered list"
+    },
+    {
+      "legacy_slide": 25,
+      "legacy_heading": "# Task lists and continuations",
+      "file": "default-showcase.md",
+      "slide": 14,
+      "heading": "# Task lists and continuations"
+    },
+    {
+      "legacy_slide": 27,
+      "legacy_heading": "# Native table row sizing",
+      "file": "default-showcase.md",
+      "slide": 15,
+      "heading": "# Native table row sizing"
+    },
+    {
+      "legacy_slide": 28,
+      "legacy_heading": "# Blockquote",
+      "file": "default-showcase.md",
+      "slide": 16,
+      "heading": "# Blockquote"
+    },
+    {
+      "legacy_slide": 29,
+      "legacy_heading": "# Code block: PowerShell",
+      "file": "default-showcase.md",
+      "slide": 17,
+      "heading": "# Code block: PowerShell"
+    },
+    {
+      "legacy_slide": 30,
+      "legacy_heading": "# Syntax highlighting: Python",
+      "file": "default-showcase.md",
+      "slide": 18,
+      "heading": "# Syntax highlighting: Python"
+    },
+    {
+      "legacy_slide": 31,
+      "legacy_heading": "# Syntax highlighting: TypeScript",
+      "file": "default-showcase.md",
+      "slide": 19,
+      "heading": "# Syntax highlighting: TypeScript"
+    },
+    {
+      "legacy_slide": 32,
+      "legacy_heading": "# Syntax highlighting: HTML",
+      "file": "default-showcase.md",
+      "slide": 20,
+      "heading": "# Syntax highlighting: HTML"
+    },
+    {
+      "legacy_slide": 33,
+      "legacy_heading": "# Syntax highlighting: CSS",
+      "file": "default-showcase.md",
+      "slide": 21,
+      "heading": "# Syntax highlighting: CSS"
+    },
+    {
+      "legacy_slide": 34,
+      "legacy_heading": "# Table column alignment",
+      "file": "default-showcase.md",
+      "slide": 22,
+      "heading": "# Table column alignment"
+    },
+    {
+      "legacy_slide": 35,
+      "legacy_heading": "# Local image",
+      "file": "default-showcase.md",
+      "slide": 23,
+      "heading": "# Local image"
+    },
+    {
+      "legacy_slide": 39,
+      "legacy_heading": "# Remote image",
+      "file": "default-showcase.md",
+      "slide": 24,
+      "heading": "# Remote image"
+    },
+    {
+      "legacy_slide": 42,
+      "legacy_heading": "# YouTube video: Big Buck Bunny",
+      "file": "default-showcase.md",
+      "slide": 25,
+      "heading": "# YouTube video: Big Buck Bunny"
+    },
+    {
+      "legacy_slide": 49,
+      "legacy_heading": "#",
+      "file": "default-showcase.md",
+      "slide": 27,
+      "heading": "#"
+    },
+    {
+      "legacy_slide": 50,
+      "legacy_heading": "# Two content areas",
+      "file": "default-showcase.md",
+      "slide": 28,
+      "heading": "# Two content areas"
+    },
+    {
+      "legacy_slide": 51,
+      "legacy_heading": "# Text beside a table",
+      "file": "default-showcase.md",
+      "slide": 29,
+      "heading": "# Text beside a table"
+    },
+    {
+      "legacy_slide": 56,
+      "legacy_heading": "# [Shared references][showcase-guide]",
+      "file": "default-showcase.md",
+      "slide": 30,
+      "heading": "# [Shared references][showcase-guide]"
+    },
+    {
+      "legacy_slide": 57,
+      "legacy_heading": "# Code stays inside its list item",
+      "file": "default-showcase.md",
+      "slide": 31,
+      "heading": "# Code stays inside its list item"
+    },
+    {
+      "legacy_slide": 58,
+      "legacy_heading": "# Numbering and reusable definitions",
+      "file": "default-showcase.md",
+      "slide": 32,
+      "heading": "# Numbering and reusable definitions"
+    },
+    {
+      "legacy_slide": 26,
+      "legacy_heading": "# Pipe table",
+      "file": "default-showcase.md",
+      "slide": 33,
+      "heading": "# Pipe table"
+    },
+    {
+      "legacy_slide": 1,
+      "legacy_heading": "# markdown-pptx",
+      "file": "advanced-showcase.md",
+      "slide": 1,
+      "heading": "# markdown-pptx"
+    },
+    {
+      "legacy_slide": 3,
+      "legacy_heading": "# How the format works",
+      "file": "advanced-showcase.md",
+      "slide": 4,
+      "heading": "# How the format works"
+    },
+    {
+      "legacy_slide": 5,
+      "legacy_heading": "# Inspection-friendly CLI modes",
+      "file": "advanced-showcase.md",
+      "slide": 5,
+      "heading": "# Inspection-friendly CLI modes"
+    },
+    {
+      "legacy_slide": 6,
+      "legacy_heading": "# Master and layout selection",
+      "file": "advanced-showcase.md",
+      "slide": 6,
+      "heading": "# Master and layout selection"
+    },
+    {
+      "legacy_slide": 7,
+      "legacy_heading": "# Agent skill support",
+      "file": "advanced-showcase.md",
+      "slide": 7,
+      "heading": "# Agent skill support"
+    },
+    {
+      "legacy_slide": 8,
+      "legacy_heading": "# Color and template control",
+      "file": "advanced-showcase.md",
+      "slide": 8,
+      "heading": "# Color and template control"
+    },
+    {
+      "legacy_slide": 9,
+      "legacy_heading": "# Supported color formats",
+      "file": "advanced-showcase.md",
+      "slide": 9,
+      "heading": "# Supported color formats"
+    },
+    {
+      "legacy_slide": 10,
+      "legacy_heading": "# Every PowerPoint theme color",
+      "file": "advanced-showcase.md",
+      "slide": 10,
+      "heading": "# Every PowerPoint theme color"
+    },
+    {
+      "legacy_slide": 11,
+      "legacy_heading": "# Feature examples",
+      "file": "advanced-showcase.md",
+      "slide": 11,
+      "heading": "# Feature examples"
+    },
+    {
+      "legacy_slide": 12,
+      "legacy_heading": "# Title Slide layout",
+      "file": "advanced-showcase.md",
+      "slide": 12,
+      "heading": "# Title Slide layout"
+    },
+    {
+      "legacy_slide": 13,
+      "legacy_heading": "# Section Header layout",
+      "file": "advanced-showcase.md",
+      "slide": 13,
+      "heading": "# Section Header layout"
+    },
+    {
+      "legacy_slide": 14,
+      "legacy_heading": "# Title and Content layout",
+      "file": "advanced-showcase.md",
+      "slide": 14,
+      "heading": "# Title and Content layout"
+    },
+    {
+      "legacy_slide": 15,
+      "legacy_heading": "# Deck-wide default layout",
+      "file": "advanced-showcase.md",
+      "slide": 15,
+      "heading": "# Deck-wide default layout"
+    },
+    {
+      "legacy_slide": 16,
+      "legacy_heading": "# Title Only layout",
+      "file": "advanced-showcase.md",
+      "slide": 16,
+      "heading": "# Title Only layout"
+    },
+    {
+      "legacy_slide": 26,
+      "legacy_heading": "# Pipe table",
+      "file": "advanced-showcase.md",
+      "slide": 17,
+      "heading": "# Pipe table"
+    },
+    {
+      "legacy_slide": 30,
+      "legacy_heading": "# Syntax highlighting: Python",
+      "file": "advanced-showcase.md",
+      "slide": 18,
+      "heading": "# Syntax highlighting: Python"
+    },
+    {
+      "legacy_slide": 31,
+      "legacy_heading": "# Syntax highlighting: TypeScript",
+      "file": "advanced-showcase.md",
+      "slide": 19,
+      "heading": "# Syntax highlighting: TypeScript"
+    },
+    {
+      "legacy_slide": 32,
+      "legacy_heading": "# Syntax highlighting: HTML",
+      "file": "advanced-showcase.md",
+      "slide": 20,
+      "heading": "# Syntax highlighting: HTML"
+    },
+    {
+      "legacy_slide": 33,
+      "legacy_heading": "# Syntax highlighting: CSS",
+      "file": "advanced-showcase.md",
+      "slide": 21,
+      "heading": "# Syntax highlighting: CSS"
+    },
+    {
+      "legacy_slide": 36,
+      "legacy_heading": "# Effects defaults and overrides",
+      "file": "advanced-showcase.md",
+      "slide": 22,
+      "heading": "# Effects defaults and overrides"
+    },
+    {
+      "legacy_slide": 37,
+      "legacy_heading": "# Table colors and effects",
+      "file": "advanced-showcase.md",
+      "slide": 23,
+      "heading": "# Table colors and effects"
+    },
+    {
+      "legacy_slide": 43,
+      "legacy_heading": "# Background color",
+      "file": "advanced-showcase.md",
+      "slide": 24,
+      "heading": "# Background color"
+    },
+    {
+      "legacy_slide": 44,
+      "legacy_heading": "# Transparent background and hidden master graphics",
+      "file": "advanced-showcase.md",
+      "slide": 25,
+      "heading": "# Transparent background and hidden master graphics"
+    },
+    {
+      "legacy_slide": 45,
+      "legacy_heading": "#",
+      "file": "advanced-showcase.md",
+      "slide": 26,
+      "heading": "#"
+    },
+    {
+      "legacy_slide": 46,
+      "legacy_heading": "# Linear gradient background",
+      "file": "advanced-showcase.md",
+      "slide": 27,
+      "heading": "# Linear gradient background"
+    },
+    {
+      "legacy_slide": 47,
+      "legacy_heading": "# Radial gradient background",
+      "file": "advanced-showcase.md",
+      "slide": 28,
+      "heading": "# Radial gradient background"
+    },
+    {
+      "legacy_slide": 48,
+      "legacy_heading": "# Slide colors override document colors",
+      "file": "advanced-showcase.md",
+      "slide": 29,
+      "heading": "# Slide colors override document colors"
+    },
+    {
+      "legacy_slide": 49,
+      "legacy_heading": "#",
+      "file": "advanced-showcase.md",
+      "slide": 30,
+      "heading": "#"
+    },
+    {
+      "legacy_slide": 52,
+      "legacy_heading": "# Theme syntax: dark colors",
+      "file": "advanced-showcase.md",
+      "slide": 31,
+      "heading": "# Theme syntax: dark colors"
+    },
+    {
+      "legacy_slide": 53,
+      "legacy_heading": "# Theme syntax: light colors",
+      "file": "advanced-showcase.md",
+      "slide": 32,
+      "heading": "# Theme syntax: light colors"
+    },
+    {
+      "legacy_slide": 54,
+      "legacy_heading": "# Theme syntax: a light gradient",
+      "file": "advanced-showcase.md",
+      "slide": 33,
+      "heading": "# Theme syntax: a light gradient"
+    },
+    {
+      "legacy_slide": 55,
+      "legacy_heading": "# Theme syntax: a dark gradient",
+      "file": "advanced-showcase.md",
+      "slide": 34,
+      "heading": "# Theme syntax: a dark gradient"
+    },
+    {
+      "legacy_slide": 57,
+      "legacy_heading": "# Code stays inside its list item",
+      "file": "advanced-showcase.md",
+      "slide": 35,
+      "heading": "# Code stays inside its list item"
+    },
+    {
+      "legacy_slide": 59,
+      "legacy_heading": "# Hidden slide setting",
+      "file": "advanced-showcase.md",
+      "slide": 36,
+      "heading": "# Hidden slide setting"
+    },
+    {
+      "legacy_slide": 60,
+      "legacy_heading": "# Hidden backup details",
+      "file": "advanced-showcase.md",
+      "slide": 37,
+      "heading": "# Hidden backup details"
+    },
+    {
+      "legacy_slide": 61,
+      "legacy_heading": "# Markdown in. Editable PowerPoint out.",
+      "file": "advanced-showcase.md",
+      "slide": 38,
+      "heading": "# Markdown in. Editable PowerPoint out."
+    },
+    {
+      "legacy_slide": 38,
+      "legacy_heading": "# Native picture effects",
+      "file": "advanced-showcase.md",
+      "slide": 56,
+      "heading": "# Native picture effects"
+    },
+    {
+      "legacy_slide": 40,
+      "legacy_heading": "# Local video: Big Buck Bunny",
+      "file": "advanced-showcase.md",
+      "slide": 57,
+      "heading": "# Local video: Big Buck Bunny"
+    },
+    {
+      "legacy_slide": 41,
+      "legacy_heading": "# Local video: automatic fullscreen playback",
+      "file": "advanced-showcase.md",
+      "slide": 58,
+      "heading": "# Local video: automatic fullscreen playback"
+    }
+  ]
+}

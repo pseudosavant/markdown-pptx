@@ -63,6 +63,21 @@ def test_canonical_metadata_and_complete_file_hash() -> None:
     assert list(path.parent.iterdir()) == [path]
 
 
+def test_packaged_skill_markdown_examples_parse_with_current_format() -> None:
+    from markdown_slides.parser import _split_source, parse_deck
+
+    sources = re.findall(r"```markdown\n(.*?)\n```", skill.render_skill(), re.DOTALL)
+    assert sources
+    decks = []
+    for source in sources:
+        deck = parse_deck(source, input_path=None, source_name="skill-example")
+        decks.append(deck)
+        document, slides, _ = _split_source(source.splitlines(), source_name="skill-example")
+        default_layout = document.get("layout", "Title and Content")
+        assert all(slide.config.get("layout") != default_layout for slide in slides)
+    assert any(image.effects for deck in decks for slide in deck.slides for image in slide.body.images)
+
+
 def test_canonical_generation_preserves_other_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         skill, "_SKILL_TEMPLATE", skill._SKILL_TEMPLATE.replace("metadata:\n", "metadata:\n  author: Test\n")

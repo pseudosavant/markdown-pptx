@@ -68,12 +68,12 @@ def build_parser(*, platform: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument(
         "--ignore-document-colors",
         action="store_true",
-        help="Keep template colors instead of document-level Markdown colors.",
+        help="Keep template colors instead of document-level Markdown colors, including table fills.",
     )
     parser.add_argument(
         "--ignore-slide-colors",
         action="store_true",
-        help="Ignore slide-level Markdown color overrides.",
+        help="Ignore slide-level Markdown color overrides, including table fills.",
     )
     parser.add_argument(
         "--no-remote-images",
@@ -627,6 +627,9 @@ def _apply_color_ignore_flags(
             slide,
             text_colors=None if ignore_slide_colors else slide.text_colors,
             background=None if ignore_slide_colors and _is_color_background(slide.background) else slide.background,
+            table_options=replace(slide.table_options, header_fill=None, row_fill=None, banded_row_fill=None)
+            if ignore_slide_colors
+            else slide.table_options,
         )
         for slide in deck.slides
     ]
@@ -635,6 +638,9 @@ def _apply_color_ignore_flags(
         text_colors=None if ignore_document_colors else deck.text_colors,
         color_scheme=None if ignore_document_colors else deck.color_scheme,
         background=document_background,
+        table_options=replace(deck.table_options, header_fill=None, row_fill=None, banded_row_fill=None)
+        if ignore_document_colors
+        else deck.table_options,
         slides=slides,
     )
 
@@ -659,10 +665,19 @@ def _format_syntax(payload: dict[str, object]) -> str:
         f"Metadata comment syntax: {json.dumps(payload['metadata_comment_syntax'])}",
         f"master selector: {payload['master_selector_syntax']}",
         f"layout values: {', '.join(payload['layout_values'])}",
+        f"Default layout: {payload['layout_default_syntax']}",
+        f"Heading layouts: {json.dumps(payload['heading_layout_syntax'])}",
+        f"Slide visibility: {payload['hidden_slide_syntax']}",
         f"table options: {', '.join(table_options['defaults'])}",
         f"table option defaults: {json.dumps(table_options['defaults'])}",
+        f"Table colors: {json.dumps(table_options['colors'])}",
+        f"Table sizing and alignment: {payload['table_content_syntax']}",
+        f"Media placement: {json.dumps(payload['media_layout_syntax'])}",
+        f"Table placement: {json.dumps(payload['table_layout_syntax'])}",
         f"Two Content: {payload['two_content_syntax']}",
         f"Video links: {json.dumps(payload['video_syntax'])}",
+        f"Media effects: {json.dumps(payload['media_effects_syntax'])}",
+        f"Table effects: {json.dumps(payload['table_effects_syntax'])}",
         f"Code highlighting: {json.dumps(payload['code_highlighting'])}",
         f"References and link titles: {payload['reference_syntax']}",
         f"List content: {payload['list_content_syntax']}",

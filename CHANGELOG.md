@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.0
+
+- **Behavior change:** Infer Title Slide from a nonempty first H1 alone or followed by one H2. Infer Section Header for the same structure on later slides. The H2 becomes the native subtitle. Multiple H2s or additional content retain ordinary layout behavior. Explicit slide layouts win, and heading inference precedes the deck default.
+- Infer Two Content from one top-level Markdown thematic break. Add deck-wide default layouts and omit redundant layout comments from examples and authoring guidance.
+- Size table rows to their content using zero-height native rows. Tables default to full content-area width and stay top aligned. Markdown separator colons control horizontal cell alignment. Cell text defaults to left aligned and vertically centered. Oversized tables are not automatically shrunk.
+- Add `media_layout` and `table_layout` at deck, slide, and element scope. Width percentages use the assigned content box. Horizontal alignment defaults to center. Media now defaults to top alignment and also supports middle and bottom placement.
+- Add scoped `media_effects` and `table_effects` for borders, shadows, and reflections. Media also supports corner radius. Tables reject corner radius. Properties inherit independently and accept explicit resets. Effects preserve object size and position.
+- Replace content placeholders with native tables, pictures, and videos while retaining their layout identity. Remove empty placeholders underneath those objects.
+- Add deck and slide table fill colors while preserving native defaults and total-row styling. Preserve rich inline formatting, hyperlinks, and ScreenTips inside table cells.
+- Add hidden slides with `hidden: true` in slide metadata.
+- Reject unknown and misplaced reserved metadata comments, including orphan directives before the first H1. Preserve ordinary comments, reference definitions, and literal code examples.
+- Replace the original showcase with a vanilla Markdown default showcase and a separate advanced showcase. Retain coverage of all 61 original topics. Update the README, built-in skill, syntax catalog, examples, and tests. Exclude generated PNG preview folders from source distributions.
+
 ## 2.0.0
 
 - **Breaking change:** Replace deck and slide YAML front matter with hidden `markdown-pptx:deck` and `markdown-pptx:slide` HTML comments. The old `---` front matter format is rejected. Move the same YAML settings inside the matching comment:
