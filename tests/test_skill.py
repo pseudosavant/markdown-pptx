@@ -72,10 +72,22 @@ def test_packaged_skill_markdown_examples_parse_with_current_format() -> None:
     for source in sources:
         deck = parse_deck(source, input_path=None, source_name="skill-example")
         decks.append(deck)
-        document, slides, _ = _split_source(source.splitlines(), source_name="skill-example")
-        default_layout = document.get("layout", "Title and Content")
-        assert all(slide.config.get("layout") != default_layout for slide in slides)
+        _, slides, _ = _split_source(source.splitlines(), source_name="skill-example")
+        for index, slide in enumerate(slides):
+            if "layout" not in slide.config:
+                continue
+            lines = source.splitlines()
+            for line in range(slide.line_number, slide.body_line_number - 1):
+                if re.match(r"layout\s*:", lines[line]):
+                    lines[line] = ""
+            inferred = parse_deck("\n".join(lines), input_path=None, source_name="skill-example")
+            assert deck.slides[index].layout != inferred.slides[index].layout
     assert any(image.effects for deck in decks for slide in deck.slides for image in slide.body.images)
+    assert any(
+        slide.layout == "Title and Content" and slide.body.paragraphs and slide.body.images
+        for deck in decks
+        for slide in deck.slides
+    )
 
 
 def test_canonical_generation_preserves_other_metadata(monkeypatch: pytest.MonkeyPatch) -> None:

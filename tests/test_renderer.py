@@ -13,6 +13,7 @@ import httpx
 import pytest
 from PIL import Image
 from pptx import Presentation
+from pptx.util import Inches
 
 from markdown_slides.assets import default_template_path
 from markdown_slides.errors import AssetError, RenderError, TemplateError
@@ -134,6 +135,80 @@ def test_non_text_content_replaces_its_layout_placeholder(tmp_path: Path, layout
     if content == "[Play](demo.mp4)":
         shape_id = content_shapes[0].find("p:nvPicPr/p:cNvPr", NS).attrib["id"]
         assert xml.find(f".//p:spTgt[@spid='{shape_id}']", NS) is not None
+
+
+@pytest.mark.parametrize("size", [(1200, 200), (400, 400), (200, 1200)])
+@pytest.mark.parametrize("custom_template", [False, True])
+def test_text_with_trailing_image_uses_standard_layout_and_disjoint_bounds(tmp_path, size, custom_template):
+    Image.new("RGB", size, "blue").save(tmp_path / "photo.png")
+    template = None
+    if custom_template:
+        template = tmp_path / "theme.pptx"
+        presentation = Presentation(default_template_path())
+        placeholder = next(
+            layout for layout in presentation.slide_layouts if layout.name == "Title and Content"
+        ).placeholders[1]
+        placeholder.left, placeholder.top = Inches(1.25), Inches(2)
+        placeholder.width, placeholder.height = Inches(8), Inches(4)
+        presentation.save(template)
+    deck = parse_deck(
+        "# Results\n\n## Context\n\n- **Faster** responses\n- Stable error rates\n\n"
+        '[![Description](photo.png "Picture title")](https://example.com "ScreenTip")\n\n'
+        '<!-- markdown-pptx:media_effects\nborder: "1pt solid var(--accent-1)"\n-->\n',
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=template, force=False, base_dir=tmp_path)
+    slide = Presentation(output).slides[0]
+    assert slide.slide_layout.name == "Title and Content"
+    text = slide.placeholders[1]
+    original = slide.slide_layout.placeholders[1]
+    picture = next(shape for shape in slide.shapes if shape.name == "MarkdownSlidesImage")
+    assert len(slide.shapes) == 3 and len(slide.placeholders) == 2
+    assert text.text == "Context\nFaster responses\nStable error rates"
+    assert text.text_frame.paragraphs[1].runs[0].font.bold
+    assert (text.left, text.top, text.width) == (original.left, original.top, original.width)
+    assert text.top + text.height < picture.top
+    assert picture.top + picture.height == original.top + original.height
+    assert picture.height <= original.height // 2
+    assert picture.left == original.left + (original.width - picture.width) // 2
+    assert picture.left + picture.width <= original.left + original.width
+    assert picture.width / picture.height == pytest.approx(size[0] / size[1], rel=1e-5)
+    assert original.height - text.height == picture.height + min(Inches(0.2), original.height // 20)
+    if size == (1200, 200):
+        assert picture.width == original.width
+        assert text.height > original.height / 2
+    assert picture.alt_text == "Description" and picture.alt_text_title == "Picture title"
+    assert picture.click_action.hyperlink.address == "https://example.com"
+    assert picture.click_action.hyperlink.screen_tip == "ScreenTip"
+    with zipfile.ZipFile(output) as archive:
+        xml = ET.fromstring(archive.read("ppt/slides/slide1.xml"))
+        assert archive.read("ppt/media/image1.png") == (tmp_path / "photo.png").read_bytes()
+    assert xml.find(".//p:pic/p:nvPicPr/p:nvPr/p:ph", NS) is None
+    assert xml.find(".//p:pic/p:spPr/a:ln", NS) is not None
+    assert xml.find(".//p:sp/p:txBody/a:bodyPr/a:normAutofit", NS) is not None
+
+
+@pytest.mark.parametrize("align", ["left", "center", "right"])
+def test_trailing_image_inherits_width_and_alignment_but_stays_bottom_aligned(tmp_path, align):
+    Image.new("RGB", (1200, 200), "blue").save(tmp_path / "photo.png")
+    deck = parse_deck(
+        "<!-- markdown-pptx:deck\nmedia_layout:\n  width: 80%\n  align: right\n  valign: middle\n-->\n\n"
+        f"# Results\n\nText.\n\n![Photo](photo.png)\n\n"
+        f"<!-- markdown-pptx:media_layout\nwidth: 60%\nalign: {align}\nvalign: top\n-->\n",
+        input_path=tmp_path / "deck.md",
+        source_name="deck.md",
+    )
+    output = tmp_path / "deck.pptx"
+    render_pptx(deck, output_path=output, template_path=None, force=False, base_dir=tmp_path)
+    slide = Presentation(output).slides[0]
+    original = slide.slide_layout.placeholders[1]
+    picture = next(shape for shape in slide.shapes if shape.name == "MarkdownSlidesImage")
+    assert picture.width == round(original.width * 0.6)
+    factor = {"left": 0, "center": 0.5, "right": 1}[align]
+    assert picture.left == int(original.left + (original.width - picture.width) * factor)
+    assert picture.top + picture.height == original.top + original.height
 
 
 def test_hidden_slides_remain_in_presentation_with_native_visibility_flag(tmp_path: Path) -> None:

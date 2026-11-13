@@ -421,10 +421,57 @@ def test_title_only_rejects_body() -> None:
         )
 
 
-def test_title_and_content_rejects_mixed_text_and_image() -> None:
+@pytest.mark.parametrize("layout", ["", "<!-- markdown-pptx:slide\nlayout: Title and Content\n-->\n"])
+@pytest.mark.parametrize("text", ["Paragraph.", "- First\n- Second", "## Context\n\nExplanation.", "> A quotation."])
+def test_title_and_content_accepts_text_followed_by_one_image(layout: str, text: str) -> None:
+    deck = parse_deck(
+        f'# Slide\n{layout}\n{text}\n\n[![Description][photo]](https://example.com "ScreenTip")\n\n'
+        "<!-- markdown-pptx:media_layout\nwidth: 80%\nalign: right\n-->\n\n"
+        '<!-- An authoring comment. -->\n\n[photo]: ./image.png "Picture title"\n',
+        input_path=Path("deck.md"),
+        source_name="deck.md",
+    )
+    slide = deck.slides[0]
+    assert slide.layout == "Title and Content"
+    assert slide.body.paragraphs and len(slide.body.images) == 1
+    assert slide.secondary_body is None
+    image = slide.body.images[0]
+    assert (image.src, image.alt, image.title) == ("./image.png", "Description", "Picture title")
+    assert (image.href, image.link_title) == ("https://example.com", "ScreenTip")
+    assert image.layout.width == "80%" and image.layout.align == "right"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "![alt](image.png)\n\nParagraph.",
+        "Before.\n\n![alt](image.png)\n\nAfter.",
+        "Before.\n\n![alt](image.png)\n\n- After",
+        "Before.\n\n![alt](image.png)\n\n## After",
+        "Before.\n\n![alt](image.png)\n\n> After",
+        "Before.\n\n![alt](image.png)\n\n```\nAfter\n```",
+        "Before.\n\n![alt](image.png)\n\n<span>After</span>",
+    ],
+)
+def test_image_must_follow_all_text(body: str) -> None:
+    with pytest.raises(UnsupportedContentError, match="final visible body block"):
+        parse_deck(f"# Slide\n\n{body}\n", input_path=Path("deck.md"), source_name="deck.md")
+
+
+@pytest.mark.parametrize(
+    "object_markdown",
+    [
+        "![First](a.png)\n\n![Second](b.png)",
+        "| A |\n| --- |\n| B |",
+        "[Watch](demo.mp4)",
+        "[![Play](poster.png)](demo.mp4)",
+        "[Watch](https://youtu.be/aqz-KE-bpKQ)",
+    ],
+)
+def test_text_cannot_mix_with_other_non_text_objects(object_markdown: str) -> None:
     with pytest.raises(UnsupportedContentError):
         parse_deck(
-            "# Slide\n\nParagraph.\n\n![alt](./image.png)\n",
+            f"# Slide\n\nParagraph.\n\n{object_markdown}\n",
             input_path=Path("deck.md"),
             source_name="deck.md",
         )

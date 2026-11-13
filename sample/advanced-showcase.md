@@ -318,6 +318,7 @@ layout: Title and Content
 
 # Effects defaults and overrides
 <!-- markdown-pptx:slide
+layout: Title and Content
 media_effects:
   reflection: 4pt 20%
   border_radius: 0
@@ -327,7 +328,7 @@ notes: Deck media defaults round and shadow every content image and video. This 
   adds reflection. The slide disables rounding and shadow while inheriting reflection.
 -->
 
-Deck media defaults apply to images and videos. This slide adds a reflection.
+The image below inherits the deck reflection.
 
 This slide overrides two properties:
 
@@ -335,8 +336,6 @@ This slide overrides two properties:
 border_radius: 0
 shadow: none
 ```
-
-***
 
 ![Individual media override](./showcase-local.png)
 

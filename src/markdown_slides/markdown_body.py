@@ -221,11 +221,14 @@ def _parse_block_sequence(
     quote_depth: int = 0,
     list_depth: int = 0,
 ) -> None:
+    text_after_image: Token | None = None
     while cursor.index < len(cursor.tokens):
         token = cursor.tokens[cursor.index]
         if end_type and token.type == end_type:
             cursor.index += 1
             return
+        had_image = bool(content.images)
+        paragraph_count = len(content.paragraphs)
         if token.type == "heading_open":
             _parse_heading(
                 cursor,
@@ -319,6 +322,16 @@ def _parse_block_sequence(
             raise _unsupported_token_error(
                 token, f"Unsupported markdown block '{token.type}'.", source_name, slide_index, base_line
             )
+        if had_image and len(content.paragraphs) > paragraph_count and text_after_image is None:
+            text_after_image = token
+    if text_after_image is not None:
+        raise _unsupported_token_error(
+            text_after_image,
+            "Text must precede the standalone image. The image must be the final visible body block.",
+            source_name,
+            slide_index,
+            base_line,
+        )
     if end_type:
         raise ParseError(
             "invalid_markdown",

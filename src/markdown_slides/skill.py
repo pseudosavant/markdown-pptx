@@ -41,6 +41,17 @@ Use the published CLI through `uvx markdown-pptx`. It converts a strict Markdown
 
 Always invoke the tool as `uvx markdown-pptx ...`. Do not assume that a bare `markdown-pptx` command is installed globally, and do not substitute another launcher unless the user explicitly asks for one. This applies to rendering, inspection, validation, metadata, and skill-management commands.
 
+## Author With Defaults
+
+Start with ordinary Markdown. Add metadata only for needed overrides or settings such as speaker notes. Before rendering, remove settings whose omission would preserve the intended result. Omit empty deck and slide metadata comments.
+
+- Ordinary content slides need no `layout: Title and Content` setting.
+- Use an H1 with an optional sole H2 for the first title slide and later section slides. Omit explicit `Title Slide` and `Section Header` settings when this inference gives the intended result.
+- Use one top-level thematic break for side-by-side content. Omit explicit `Two Content` when the break already selects it.
+- Put text before one standalone image to place the image below the text. No layout metadata is needed.
+- Set shared overrides once at deck scope. Omit repeated inherited fonts, colors, placement, and other defaults from individual slides.
+- Keep an explicit layout when it changes inference or overrides the deck default. For example, `Title and Content` is necessary when a sole H2 should remain a body heading instead of becoming a subtitle.
+
 ## Start With Inspection
 
 When the format or template is unfamiliar, inspect it before writing the deck:
@@ -72,7 +83,7 @@ If no output path is supplied, the tool writes a `.pptx` beside the Markdown inp
 
 Soft line breaks become spaces. Use two trailing spaces or a trailing backslash for a visible line break within a paragraph. Task list markers become static checkboxes. Fenced code can use a language label for editable syntax coloring. Image descriptions, optional titles, and links around standalone images are preserved.
 
-Ordinary slides default to `Title and Content`. Omit `layout` when a slide uses its effective default. Omit the slide metadata comment entirely when no settings or notes are needed. Set `layout` in the deck comment when most slides need a different default. Resolution is explicit slide layout, inferred `Two Content` from one top-level thematic break, inferred title or section layout from heading-only content, deck layout, then `Title and Content`. `Title and Content` accepts text flow, one image, one table, or one video. Use a thematic break for text beside an image, table, or video, or for two independent text areas. Keep content concise enough for the available space. Use real line breaks for intentional breaks and allow PowerPoint to wrap ordinary prose.
+Ordinary slides default to `Title and Content`. Set `layout` in the deck comment when most slides need a different default. Resolution is explicit slide layout, inferred `Two Content` from one top-level thematic break, inferred title or section layout from heading-only content, deck layout, then `Title and Content`. `Title and Content` accepts text flow, one image, text followed by one image, one table, or one video. Use a thematic break for text beside an image, table, or video, or for two independent text areas. Keep content concise enough for the available space. Use real line breaks for intentional breaks and allow PowerPoint to wrap ordinary prose.
 
 Use `hidden: true` in slide metadata for backup slides that PowerPoint should skip during the slide show. Hidden slides keep their content and notes in the editable presentation. Visibility defaults to true.
 
@@ -98,6 +109,23 @@ A nonempty H1 alone, or followed by exactly one top-level H2 and no other conten
 ```
 
 Multiple H2s, H3 through H6, or any additional paragraph, list, code, image, table, or video keep ordinary layout behavior. H1 remains the only slide boundary. Explicit slide layout wins, then a content divider selects Two Content, then title or section inference, then the deck default. Use explicit Title Only when needed. Empty H1 with no body still defaults to Blank when no layout is configured. Use `--examples heading-layouts` for examples.
+
+## Put An Image Below Text
+
+On a `Title and Content` slide, write all text first and finish with one standalone image:
+
+```markdown
+# Performance improved
+
+- Response times fell by 35%.
+- Error rates remained stable.
+
+![Response time trend](images/response-times.png)
+```
+
+The image is bottom aligned within the original content area. It preserves aspect ratio and uses at most half the area's height. The native text placeholder is shortened to leave the image's actual fitted height and a gap of 0.2in, capped at 5% of the content height. Short, wide images leave more room for text. No custom layout is required. Text remains editable and inherits template formatting. Regenerate with `--template` to recalculate placement for another template's content bounds.
+
+Existing `media_layout` width and horizontal alignment apply. The image always stays bottom aligned in this composition, regardless of `valign`. Image effects and links still work. Effects can extend outside the fitted bounds. Keep text concise and review previews because native autofit can shrink long text. Additional images, text after the image, and mixed text with tables or videos are errors. Two Content areas still each accept only text or one non-text object. Use `--examples images` for complete examples.
 
 ## Author Two Content Slides
 
@@ -201,7 +229,7 @@ Tables default to the content area's full width. PowerPoint sizes zero-height ro
 
 ## Place Media And Tables
 
-Content images and videos default to horizontal centering and top alignment. Tables always stay top aligned and default to full content-box width. Use `media_layout` or `table_layout` mappings in deck or slide metadata, or adjacent element comments with the same names. Each property resolves through element, slide, deck, then default. Omitted keys inherit. Empty mappings preserve inheritance.
+Image-only content areas and videos default to horizontal centering and top alignment. An image following text is always bottom aligned below the shortened text placeholder. Tables always stay top aligned and default to full content-box width. Use `media_layout` or `table_layout` mappings in deck or slide metadata, or adjacent element comments with the same names. Each property resolves through element, slide, deck, then default. Omitted keys inherit. Empty mappings preserve inheritance.
 
 Both categories accept `width: auto`, a positive percentage, or inches such as `4in`, and `align: left|center|right`, default center. Media also accepts `valign: top|middle|bottom`, default top. Tables reject `valign` at every scope. Keep table-cell alignment in ordinary Markdown separator colons.
 

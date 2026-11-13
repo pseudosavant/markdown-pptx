@@ -147,7 +147,8 @@
     "native_table_effects",
     "native_video_effects",
     "heading_based_layout_inference",
-    "rich_table_cells"
+    "rich_table_cells",
+    "text_followed_by_standalone_image"
   ],
   "unsupported_markdown": [
     "horizontal_rules_outside_two_content_separator",
@@ -172,7 +173,7 @@
     "var(--hyperlink)",
     "var(--followed-hyperlink)"
   ],
-  "example": "<!-- markdown-pptx:deck\naspect_ratio: \"16:9\"\nfonts:\n  body: Aptos\n  headings: Aptos Display\ncolor_scheme:\n  preset: Office\ntitle_color: \"var(--dark-1)\"\nbody_color: \"var(--dark-1)\"\n-->\n\n# Title slide\n<!-- markdown-pptx:slide\nlayout: Title Slide\nnotes: Introduce the deck.\n-->\n\nA concise subtitle line.\n\n# Overview\n\n## Goals\n\n- Keep the Markdown readable\n- Use real PowerPoint placeholders\n- Omit redundant layout settings\n\n# Backup details\n<!-- markdown-pptx:slide\nhidden: true\n-->\n\nAdditional context for questions.\n",
+  "example": "<!-- markdown-pptx:deck\naspect_ratio: \"16:9\"\nfonts:\n  body: Aptos\n  headings: Aptos Display\ncolor_scheme:\n  preset: Office\ntitle_color: \"var(--dark-1)\"\nbody_color: \"var(--dark-1)\"\n-->\n\n# Title slide\n<!-- markdown-pptx:slide\nnotes: Introduce the deck.\n-->\n\n## A concise subtitle line.\n\n# Overview\n\n## Goals\n\n- Keep the Markdown readable\n- Use real PowerPoint placeholders\n- Omit redundant layout settings\n\n# Backup details\n<!-- markdown-pptx:slide\nhidden: true\n-->\n\nAdditional context for questions.\n",
   "code_highlighting": {
     "values": [
       "default",
@@ -254,10 +255,10 @@
       "align": "center",
       "valign": "top"
     },
-    "valign": "top, middle, or bottom. Default top.",
+    "valign": "top, middle, or bottom. Default top. An image following text on Title and Content is always bottom aligned regardless of valign.",
     "fitting": "Preserve aspect ratio and fit within width and height. Auto uses the largest proportional fit. Height may further limit the requested width. Effects do not influence fitting. Background images are unaffected.",
     "video_aliases": "Existing video width, align, and valign remain element aliases. Repeating a property in both video and media_layout element comments is an error.",
-    "example": "![Dashboard](photo.png)\n\n<!-- markdown-pptx:media_layout\nwidth: 75%\nalign: right\nvalign: top\n-->"
+    "example": "![Dashboard](photo.png)\n\n<!-- markdown-pptx:media_layout\nwidth: 75%\nalign: right\n-->"
   },
   "table_layout_syntax": {
     "width": "auto, a positive percentage, or inches such as 4in. Capped to the assigned content box. Percentages use that box, not the slide. 50% on Two Content means half of one box.",
@@ -284,5 +285,13 @@
     "positions": "First means the first H1 in the source, including hidden slides. Ordinary comments and reference definitions do not count as content. ATX and Setext spellings behave identically.",
     "ordinary_content": "Multiple H2s, H3 through H6, or any additional paragraph, list, code, image, table, or video keep ordinary layout behavior. H2 never starts a slide. No slide-level CLI option is needed.",
     "example": "# Launch plan\n## From prototype to production\n\n# Delivery\n## Scope, dates, and ownership\n\n# Milestones\n\n- Design approved\n- Launch scheduled\n"
+  },
+  "text_image_syntax": {
+    "form": "On Title and Content, write text followed by one trailing standalone image. No metadata or custom layout is required. Two Content areas still reject mixed text and images.",
+    "fitting": "Preserve aspect ratio. Fit within the original content width and half the original height. Bottom align the image and shorten the native text placeholder above it. Leave a gap of 0.2in, capped at 5% of the original content height. Short, wide images leave more room for text.",
+    "placement": "media_layout width and align apply. Percentage widths use the original content width. The trailing image is always bottom aligned regardless of valign. Image-only areas keep their existing behavior. Regenerate with another template to recalculate placement from its standard content bounds.",
+    "formatting": "Text retains native template formatting and autofit. The image remains a separate editable picture with its effects, alt text, title, and hyperlinks. Effects may extend beyond the fitted bounds. Long text can shrink and needs preview review.",
+    "validation": "All text must precede one standalone image. Ordinary comments, reference definitions, and adjacent element metadata may follow it. Text after the image, multiple images, mixed tables or videos, and inline or nested images are rejected.",
+    "example": "# Results\n\n- Faster responses\n- Stable error rates\n\n![Response time trend](photo.png)\n"
   }
 }

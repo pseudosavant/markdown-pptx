@@ -675,6 +675,7 @@ def _format_syntax(payload: dict[str, object]) -> str:
         f"Media placement: {json.dumps(payload['media_layout_syntax'])}",
         f"Table placement: {json.dumps(payload['table_layout_syntax'])}",
         f"Two Content: {payload['two_content_syntax']}",
+        f"Text above an image: {json.dumps(payload['text_image_syntax'])}",
         f"Video links: {json.dumps(payload['video_syntax'])}",
         f"Media effects: {json.dumps(payload['media_effects_syntax'])}",
         f"Table effects: {json.dumps(payload['table_effects_syntax'])}",

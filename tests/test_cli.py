@@ -165,6 +165,8 @@ def test_syntax_json_output() -> None:
     assert "layout" in payload["deck_metadata_keys"]
     assert "hidden" in payload["slide_metadata_keys"]
     assert "Default Title and Content" in payload["layout_default_syntax"]
+    assert "text_followed_by_standalone_image" in payload["supported_markdown"]
+    assert "half the original height" in payload["text_image_syntax"]["fitting"]
     assert "Heading inference overrides the deck default" in payload["heading_layout_syntax"]["precedence"]
     assert "native subtitle" in payload["heading_layout_syntax"]["subtitle"]
     assert "Zero-height rows" in payload["table_content_syntax"]
@@ -280,6 +282,13 @@ def test_syntax_example_is_valid_current_markdown() -> None:
     deck = parse_deck(load_syntax_payload()["example"], input_path=None, source_name="syntax-example")
     assert deck.slides[1].layout == "Title and Content"
     assert deck.slides[-1].hidden
+    assert deck.slides[0].layout == "Title Slide"
+    assert deck.slides[0].body.paragraphs[0].kind == "subtitle"
+    image_deck = parse_deck(
+        load_syntax_payload()["text_image_syntax"]["example"], input_path=None, source_name="image-example"
+    )
+    assert image_deck.slides[0].layout == "Title and Content"
+    assert image_deck.slides[0].body.paragraphs and len(image_deck.slides[0].body.images) == 1
 
 
 def test_syntax_plain_output_lists_all_theme_color_variables() -> None:

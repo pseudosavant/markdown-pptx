@@ -5,7 +5,7 @@ import re
 import shutil
 import tempfile
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -628,6 +628,8 @@ def _render_content_area(
 ) -> None:
     placeholder.text_frame.clear()
     if body.paragraphs:
+        if body.images:
+            _render_trailing_image(slide, placeholder, body.images[0], base_dir=base_dir, downloader=downloader)
         _render_text_flow(
             placeholder,
             body,
@@ -1059,6 +1061,40 @@ def _render_image(
         contain=contain,
         layout=image.layout or ObjectLayout(),
     )
+    picture = _add_image(slide, image, image_source, left, top, width, height, name=name)
+    replace_content_placeholder(placeholder, picture)
+
+
+def _render_trailing_image(slide, placeholder, image: ImageBlock, *, base_dir: Path, downloader: Downloader) -> None:
+    area_left, area_top, area_width, area_height = (
+        placeholder.left,
+        placeholder.top,
+        placeholder.width,
+        placeholder.height,
+    )
+    if area_width <= 0 or area_height < 2:
+        raise TemplateError(
+            "invalid_content_placeholder", "Text with an image requires usable content placeholder bounds."
+        )
+    image_source = _resolve_image_source(image.src, base_dir=base_dir, downloader=downloader)
+    image_area_height = area_height // 2
+    left, top, width, height = _fit_image(
+        image_source,
+        area_left,
+        area_top + area_height - image_area_height,
+        area_width,
+        image_area_height,
+        contain=True,
+        layout=replace(image.layout or ObjectLayout(), valign="bottom"),
+    )
+    gap = min(Inches(0.2), area_height // 20)
+    # A local transform must include every inherited bound when resizing a placeholder.
+    placeholder.left, placeholder.top, placeholder.width = area_left, area_top, area_width
+    placeholder.height = top - area_top - gap
+    _add_image(slide, image, image_source, left, top, width, height, name="MarkdownSlidesImage")
+
+
+def _add_image(slide, image: ImageBlock, image_source, left, top, width, height, *, name: str):
     picture = slide.shapes.add_picture(image_source, left, top, width, height)
     if image.effects is not None:
         apply_media_effects(picture, image.effects, set_color=_set_color)
@@ -1069,7 +1105,7 @@ def _render_image(
         picture.click_action.hyperlink.address = image.href
         if image.link_title:
             picture.click_action.hyperlink.screen_tip = image.link_title
-    replace_content_placeholder(placeholder, picture)
+    return picture
 
 
 def _resolve_image_source(src: str, *, base_dir: Path, downloader: Downloader):

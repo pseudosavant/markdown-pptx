@@ -30,6 +30,7 @@ Do not rename the import package unless the user explicitly asks. The distributi
 - Deck metadata uses a `markdown-pptx:deck` HTML comment at the start of the file.
 - Slide metadata uses a `markdown-pptx:slide` HTML comment immediately after an H1.
 - Slides default to `Title and Content`. Omit redundant layout settings in authoring guidance and examples. Deck metadata can set a different default layout.
+- `Title and Content` also accepts text followed by one trailing standalone image. Keep text in its native placeholder and shorten it above a separate editable picture. Bottom align the image in the original content bounds and cap it to half the original height. No custom layout is required. Two Content regions still reject mixed text and images.
 - `media_effects` and `table_effects` set deck and slide defaults. Adjacent comments with the same category names set element overrides. Merge per property. Reject table corner radius and incorrect targets. Require quoted values containing hex colors.
 - `media_layout` and `table_layout` set width and alignment at deck, slide, and element scope. Percentages use the assigned content box. Horizontal alignment defaults to center. Media defaults to top and supports middle and bottom. Tables always stay top aligned and reject `valign`. Preserve native row sizing.
 - Standalone MP4 and YouTube links become videos. A linked image to an MP4 supplies its poster. Optional `markdown-pptx:video` comments hold playback settings.
@@ -79,7 +80,7 @@ before `uv` / `uvx` commands if hardlink errors appear.
 
 - Use public `ps-python-pptx` APIs where available.
 - Keep missing placeholder-replacement, picture-effect, and slide-visibility APIs isolated in `native_pptx.py`. Video XML remains isolated in `video.py`.
-- Tables, images, and videos replace their content placeholder and retain its layout identity. Do not leave an empty content placeholder underneath them.
+- Tables, images, and videos that occupy a content area alone replace their content placeholder and retain its layout identity. Do not leave an empty content placeholder underneath them. A trailing image below text is a separate picture while text retains its native placeholder.
 - Image effects do not change picture size or position. Effects may extend beyond the content area or slide edge.
 - Keep the API boundary test's exceptions narrow. Do not add direct XML access to the parser or main renderer.
 

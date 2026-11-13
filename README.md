@@ -130,6 +130,8 @@ If no `--template` is provided, the packaged default template is used.
 
 Ordinary slides default to `Title and Content`. Omit `layout` when the slide uses its effective default. A slide metadata comment is unnecessary when there are no overrides, notes, or other settings.
 
+Start with ordinary Markdown and add metadata only for needed overrides. Use heading inference for title and section slides and a thematic break for side-by-side content. Set shared overrides at deck scope. Before rendering, remove redundant settings and empty comments. Keep explicit layouts when they change inference or override the deck default.
+
 ## Use a PowerPoint template
 
 Inspect a template before writing the deck, then use only the layouts it provides:
@@ -152,7 +154,7 @@ Master selectors may be 1-based indices or exact unique master or theme names. I
 
 The renderer uses real placeholders for slide titles and bodies. Missing placeholders, duplicate layout names, and ambiguous placeholder mappings are errors. It does not invent free-positioned text boxes to compensate for an incompatible template.
 
-Tables, images, and videos replace the empty content placeholder with their native PowerPoint object. The object retains the placeholder's layout identity.
+Tables, images, and videos that occupy a content area alone replace its empty content placeholder with their native PowerPoint object. The object retains the placeholder's layout identity. When text is followed by one image, the text keeps its native content placeholder and the image is a separate editable picture below it.
 
 ## Customize a deck
 
@@ -327,9 +329,28 @@ Use standard Markdown separator colons for horizontal column alignment. `:---` i
 
 Local image paths are resolved relative to the Markdown file. Remote HTTP and HTTPS images are enabled by default. Use `--no-remote-images` for offline builds or untrusted Markdown. Download assets ahead of time and use local paths when reproducible builds matter.
 
+### Text above an image
+
+Finish a `Title and Content` slide with one standalone image to place it below the text. No metadata or custom layout is required:
+
+```markdown
+# Performance improved
+
+- Response times fell by 35%.
+- Error rates remained stable.
+
+![Response time trend](images/response-times.png)
+```
+
+The image stays bottom aligned inside the original content placeholder's bounds. It preserves aspect ratio and uses at most half the original height. The text keeps the native placeholder, shortened to leave the image's actual fitted height and a gap of 0.2in, capped at 5% of the original content height. Short, wide images leave more room for text. The image remains an editable picture. Regenerating with another `--template` recalculates placement from that template's standard layout.
+
+`media_layout` width and horizontal alignment apply normally. Percentage widths use the original content width. The image stays bottom aligned regardless of `valign`. Effects, image descriptions, titles, and hyperlinks remain supported. Effects may extend beyond the fitted bounds. Long text can shrink through PowerPoint's native autofit, so review the generated slides.
+
+All text must precede the image. Ordinary comments, reference definitions, and adjacent image metadata can follow it. Multiple images, text after the image, and mixed text with tables or videos are rejected. Each side of `Two Content` still accepts only text or one non-text object. A slide containing only an image keeps its existing placement behavior.
+
 ### Media and table placement
 
-Images and videos default to horizontal centering and top alignment inside their content placeholder. Tables stay top aligned and fill the placeholder width by default. Set `media_layout` or `table_layout` in deck or slide metadata to override placement:
+Image-only content areas and videos default to horizontal centering and top alignment inside their content placeholder. An image following text stays bottom aligned below the shortened text placeholder. Tables stay top aligned and fill the placeholder width by default. Set `media_layout` or `table_layout` in deck or slide metadata to override placement:
 
 ```markdown
 <!-- markdown-pptx:deck
@@ -492,7 +513,7 @@ The built-in template provides these common layouts. Supplied templates may use 
 | --- | --- |
 | `Title Slide` | Body text is placed in the subtitle placeholder |
 | `Section Header` | Body text is placed in the subtitle or body placeholder |
-| `Title and Content` | Accepts text flow, one image, one table, or one video |
+| `Title and Content` | Accepts text flow, one image, text followed by one image, one table, or one video |
 | `Two Content` | One thematic break separates left and right content. Each side accepts text flow, one image, one table, or one video |
 | `Title Only` | Does not accept body content |
 | `Blank` | Requires an empty title and empty body |
@@ -620,7 +641,7 @@ Put exactly one top-level thematic break between the left and right content. Thi
 - More preparation
 ```
 
-Each side follows the same content rules as `Title and Content`. Text beside an image, table, or video is supported. Mixing text and a non-text object within one side is rejected. Either side can be empty, but the separator is still required.
+Each side accepts text flow, one image, one table, or one video. Text beside an image, table, or video is supported. Mixing text and a non-text object within one side is rejected. Text above a trailing image is supported only on `Title and Content`. Either side can be empty, but the separator is still required.
 
 Prefer `***` surrounded by blank lines. CommonMark `---` and `___` thematic breaks also work. A `---` directly below paragraph text is a Setext H2 underline. The slide metadata comment remains valid only immediately after the slide heading. Breaks inside code fences remain literal code. Nested breaks and more than one break are rejected. An explicit slide layout overrides inference. A divider with an incompatible explicit layout is an error. Selecting `Two Content` explicitly or as a deck default still requires the divider.
 

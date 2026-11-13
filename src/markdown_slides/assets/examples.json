@@ -3,7 +3,7 @@
     "id": "metadata",
     "description": "Document defaults and slide overrides, including fonts, theme colors, master selection, and speaker notes.",
     "requirements": "Packaged default template. For a custom template, inspect --list-masters and --list-layouts --json first. Master selectors also accept exact unique master/theme names.",
-    "markdown": "<!-- markdown-pptx:deck\naspect_ratio: \"16:9\"\nfonts:\n  body: Aptos\n  headings: Aptos Display\ncolor_scheme:\n  preset: Office\n  accent_1: \"#1D6FA8\"\nbackground: \"var(--light-1)\"\ntitle_color: \"var(--dark-1)\"\nbody_color: \"var(--dark-2)\"\n-->\n\n# Project update\n<!-- markdown-pptx:slide\nmaster: 1\nlayout: Title Slide\nbackground: \"var(--accent-1)\"\ntitle_color: \"#FFFFFF\"\nbody_color: \"#FFFFFF\"\nhide_background_graphics: true\nnotes: |\n  Introduce the project.\n  Explain the next milestone.\n-->\n\nSeptember review\n\n# Current status\n\n- Document colors apply here.\n- Omit fonts and colors to preserve a supplied template's theme.\n"
+    "markdown": "<!-- markdown-pptx:deck\naspect_ratio: \"16:9\"\nfonts:\n  body: Aptos\n  headings: Aptos Display\ncolor_scheme:\n  preset: Office\n  accent_1: \"#1D6FA8\"\nbackground: \"var(--light-1)\"\ntitle_color: \"var(--dark-1)\"\nbody_color: \"var(--dark-2)\"\n-->\n\n# Project update\n<!-- markdown-pptx:slide\nbackground: \"var(--accent-1)\"\ntitle_color: \"#FFFFFF\"\nbody_color: \"#FFFFFF\"\nhide_background_graphics: true\nnotes: |\n  Introduce the project.\n  Explain the next milestone.\n-->\n\n## September review\n\n# Current status\n\n- Document colors apply here.\n- Omit fonts and colors to preserve a supplied template's theme.\n"
   },
   {
     "id": "two-content",
@@ -15,7 +15,7 @@
     "id": "layouts",
     "description": "All supported layout names and empty-title syntax. H1 starts slides. A thematic break selects Two Content and separates its content. Heading-only slides infer title and section layouts without metadata.",
     "requirements": "Packaged default template. Layout names must exist on the selected master. Title Slide and Section Header accept text only. Title Only has no body. Blank has neither title nor body.",
-    "markdown": "# Welcome\n\n## A short subtitle\n\n# Agenda\n\n- Context\n- Decision\n\n# Compare\n\nFirst approach\n\n***\n\nSecond approach\n\n# Next section\n\n## A short introduction\n\n# Discussion\n<!-- markdown-pptx:slide\nlayout: Title Only\n-->\n\n#\n<!-- markdown-pptx:slide\nlayout: Blank\n-->\n"
+    "markdown": "# Welcome\n\n## A short subtitle\n\n# Agenda\n\n- Context\n- Decision\n\n# Compare\n\nFirst approach\n\n***\n\nSecond approach\n\n# Next section\n\n## A short introduction\n\n# Discussion\n<!-- markdown-pptx:slide\nlayout: Title Only\n-->\n\n#\n"
   },
   {
     "id": "deck-layout",
@@ -55,9 +55,9 @@
   },
   {
     "id": "images",
-    "description": "Local and remote standalone images, picture alt text and optional titles, and a link around an image. Two Content allows a caption or explanation beside an image. Adjacent media_effects comments set editable borders, rounded corners, shadows, and reflections.",
+    "description": "Local and remote standalone images, text above one trailing image, picture descriptions and titles, and linked images. Two Content allows text beside an image. Adjacent media_effects comments set editable effects.",
     "requirements": "Supply photo.png beside the Markdown file. Replace the example.com URL with a reachable image URL. Relative paths resolve from the Markdown directory, or --base-dir for stdin. --no-remote-images rejects remote images. Images fit within their content area while preserving aspect ratio.",
-    "markdown": "# Local image\n\n![A descriptive alternative](photo.png \"Optional picture title\")\n\n# Linked image and context\n\n[![A descriptive alternative](photo.png \"Open project details\")](https://example.com/project)\n\n***\n\n## Project context\n\nThe image on the left opens the project page.\n\n# Remote image\n\n![A descriptive alternative](https://example.com/photo.png \"Remote picture\")\n\n# Native picture effects\n\n![Dashboard](photo.png \"Picture effects\")\n\n<!-- markdown-pptx:media_effects\nborder: \"1pt solid var(--accent-1)\"\nborder_radius: 8pt\nshadow: \"2pt 2pt 6pt rgba(0, 0, 0, 0.25)\"\nreflection: \"4pt 30%\"\n-->\n"
+    "markdown": "# Local image\n\n![A descriptive alternative](photo.png \"Optional picture title\")\n\n# Linked image and context\n\n[![A descriptive alternative](photo.png \"Open project details\")](https://example.com/project)\n\n***\n\n## Project context\n\nThe image on the left opens the project page.\n\n# Remote image\n\n![A descriptive alternative](https://example.com/photo.png \"Remote picture\")\n\n# Native picture effects\n\n![Dashboard](photo.png \"Picture effects\")\n\n<!-- markdown-pptx:media_effects\nborder: \"1pt solid var(--accent-1)\"\nborder_radius: 8pt\nshadow: \"2pt 2pt 6pt rgba(0, 0, 0, 0.25)\"\nreflection: \"4pt 30%\"\n-->\n\n# Text above an image\n\n- Response times fell by 35%.\n- Error rates remained stable.\n\n![Response time trend](photo.png)\n"
   },
   {
     "id": "backgrounds",

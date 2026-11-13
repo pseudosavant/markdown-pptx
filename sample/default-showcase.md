@@ -453,3 +453,11 @@ An angle-bracket link works too: <https://github.com/pseudosavant/markdown-pptx>
 | Strike | ~~Removed~~ |
 | Baselines | Water is H~2~O, area is x^2^ |
 | Links | [**Read the guide**][showcase-guide] |
+
+# Text above one image
+
+- Write all text before the image.
+- The standard content placeholder stays editable.
+- The image fits below the text without layout metadata.
+
+![Local sample beneath the text][local-photo]

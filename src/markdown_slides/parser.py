@@ -1004,9 +1004,13 @@ def _validate_layout_content(
             )
         return
     if layout in {"Title and Content", "Two Content"}:
-        if body.has_text_flow and body.has_non_text:
+        text_with_trailing_image = (
+            layout == "Title and Content" and len(body.images) == 1 and not body.tables and not body.videos
+        )
+        if body.has_text_flow and body.has_non_text and not text_with_trailing_image:
             raise UnsupportedContentError(
-                f"Each content area of a {layout} slide cannot mix text-flow blocks with images, tables, or videos.",
+                f"Each content area of a {layout} slide cannot mix text-flow blocks with non-text objects. "
+                "Title and Content also accepts text followed by one standalone image.",
                 slide_index=slide_index,
                 line=line,
                 input_path=source_name,

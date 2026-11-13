@@ -233,6 +233,9 @@ def test_showcases_cover_supported_markdown_inventory():
         "html_tags_and_comments_ignored": "html_block" in token_types and "<span>" in source,
         "pipe_tables": bool(tables),
         "local_images": any(not i.src.startswith("https:") for i in images),
+        "text_followed_by_standalone_image": any(
+            slide.layout == "Title and Content" and slide.body.paragraphs and slide.body.images for slide in slides
+        ),
         "remote_images": any(i.src.startswith("https:") for i in images),
         "embedded_h264_mp4_videos": any(v.kind == "local_mp4" for v in videos),
         "online_youtube_videos": any(v.kind == "youtube" for v in videos),
